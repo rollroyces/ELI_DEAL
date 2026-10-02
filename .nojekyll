@@ -1,0 +1,2 @@
+# Tell GitHub Pages to skip Jekyll processing.
+# We serve plain static files (index.html, style.css, app.js, js/*).

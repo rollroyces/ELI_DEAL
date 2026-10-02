@@ -1,0 +1,17 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local backups
+*.bak
+*.tmp
+
+# The original app.js is kept only as a local reference for the rewrite.
+# Don't ship it to GitHub — the deployed file is app.js.
+app.js.original
