@@ -83,13 +83,15 @@
   }
 
   // ── Async backend sync (fire-and-forget) ─────────────────────────────
+  var pendingFlushes = [];
   function asyncPersistDeals() {
     var snapshot = JSON.parse(JSON.stringify(memDeals));
     safeWrite(KEY_DEALS, snapshot);
     if (global.Db && global.Db.ready) {
-      global.Db.ready().then(function () {
-        if (global.Db && global.Db.saveDeals) global.Db.saveDeals(snapshot);
+      var p = global.Db.ready().then(function () {
+        if (global.Db && global.Db.saveDeals) return global.Db.saveDeals(snapshot);
       });
+      pendingFlushes.push(p);
     }
   }
   function asyncPersistSettings() {
@@ -97,6 +99,23 @@
   }
   function asyncPersistPriceCache() {
     safeWrite(KEY_PRICE_CACHE, memPriceCache);
+  }
+
+  // Resolve when all pending backend writes complete.
+  function flush() {
+    return Promise.all(pendingFlushes.slice()).catch(function () { /* per-write failures are non-fatal */ });
+  }
+
+  // Re-pull from the SQLite backend into the in-memory cache.
+  // Useful after Db.clearAll() or Db.importFile() to keep cache in sync.
+  async function refresh() {
+    if (!global.Db) return;
+    try {
+      await global.Db.ready();
+      var fromDb = global.Db.getDeals();
+      syncMemDealsFromArray(fromDb || []);
+      safeWrite(KEY_DEALS, memDeals);
+    } catch (e) { /* ignore */ }
   }
 
   // ── Init / migration ────────────────────────────────────────────────
@@ -247,6 +266,8 @@
     importAll: importAll,
     exportDatabaseFile: exportDatabaseFile,
     importDatabaseFile: importDatabaseFile,
-    dbStatus: dbStatus
+    dbStatus: dbStatus,
+    flush: flush,
+    refresh: refresh
   };
 })(window);
