@@ -2029,8 +2029,13 @@ select.form-control {
   padding: var(--space-16);
   box-shadow: var(--shadow-lg);
   max-width: 350px;
-  transform: translateX(100%);
+  min-width: 280px;
+  word-wrap: break-word;
   animation: slideIn 0.3s ease-out forwards;
+  /* Reduced motion: skip the animation, show immediately */
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
 }
 
 .toast.removing {
@@ -2038,14 +2043,20 @@ select.form-control {
 }
 
 @keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
   to {
+    opacity: 1;
     transform: translateX(0);
   }
 }
 
 @keyframes slideOut {
   to {
-    transform: translateX(100%);
+    opacity: 0;
+    transform: translateX(20px);
   }
 }
 
@@ -2364,11 +2375,13 @@ select.form-control {
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.65);
   z-index: 1400;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--duration-normal) var(--ease-standard);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 .sidebar-backdrop.open {
   opacity: 1;
@@ -2394,4 +2407,10 @@ select.form-control {
   .sidebar-backdrop {
     display: none !important;
   }
+}
+
+/* Hide the notification bell until the user has deals with alerts */
+body.no-deals .notifications {
+  visibility: hidden;
+  pointer-events: none;
 }

@@ -528,8 +528,20 @@
     var activityList = document.getElementById('activity-list');
     if (activityList) {
       var status = HKELIApp.data.apiStatus;
-      var activities = [
-        {
+      var hasDeals = HKELIApp.data.eliDeals.length > 0;
+      var activities = [];
+
+      // First-run / no-deals state: just one welcome item.
+      if (!hasDeals) {
+        activities.push({
+          icon: 'fas fa-rocket',
+          iconClass: 'info',
+          title: 'Welcome to HK ELI Portfolio Manager',
+          description: 'Add your first deal in ELI Deals to start tracking barrier risk and live prices.',
+          time: 'just now'
+        });
+      } else {
+        activities.push({
           icon: 'fas fa-chart-line',
           iconClass: status.connected ? 'success' : 'error',
           title: status.connected ? 'Live Data Active' : 'Data Connection Issue',
@@ -537,25 +549,26 @@
             ? 'Real-time prices from ' + (status.source === 'finnhub' ? 'Finnhub' : 'Yahoo Finance')
             : 'Using last cached prices',
           time: status.lastSuccessfulRefresh ? formatTimeAgo(status.lastSuccessfulRefresh) : 'Never updated'
-        },
-        {
+        });
+        activities.push({
           icon: 'fas fa-sync-alt',
           iconClass: 'info',
           title: 'Data Refresh',
           description: 'Portfolio data last updated',
           time: HKELIApp.data.settings.lastRefresh ? formatTimeAgo(HKELIApp.data.settings.lastRefresh) : 'Never'
-        }
-      ];
-      var knockIns = HKELIApp.data.eliDeals.filter(function (d) { return d.status === 'Knock-in Triggered'; }).length;
-      if (knockIns > 0) {
-        activities.push({
-          icon: 'fas fa-exclamation-triangle',
-          iconClass: 'warning',
-          title: 'Market Risk',
-          description: knockIns + ' position(s) showing knock-in risk',
-          time: 'live'
         });
+        var knockIns = HKELIApp.data.eliDeals.filter(function (d) { return d.status === 'Knock-in Triggered'; }).length;
+        if (knockIns > 0) {
+          activities.push({
+            icon: 'fas fa-exclamation-triangle',
+            iconClass: 'warning',
+            title: 'Market Risk',
+            description: knockIns + ' position(s) showing knock-in risk',
+            time: 'live'
+          });
+        }
       }
+
       activityList.innerHTML = activities.map(function (a) {
         var bg = {success: '3', warning: '2', error: '4', info: '1'}[a.iconClass] || '1';
         return '<div class="activity-item">' +
@@ -564,6 +577,8 @@
         '</div>';
       }).join('');
     }
+    // Hide the notification bell until the user has deals (no alerts to show).
+    document.body.classList.toggle('no-deals', !hasDeals);
     renderQuickStats();
   }
 
@@ -572,8 +587,8 @@
     var approaching = deals.filter(function (d) { return d.status === 'Approaching Maturity'; }).length;
     var knockIn = deals.filter(function (d) { return d.status === 'Knock-in Triggered'; }).length;
     var avgCoupon = deals.length
-      ? (deals.reduce(function (s, d) { return s + (d.couponRate || 0); }, 0) / deals.length).toFixed(2)
-      : '0';
+      ? (deals.reduce(function (s, d) { return s + (d.couponRate || 0); }, 0) / deals.length).toFixed(2) + '%'
+      : '—';
     var multiStock = deals.filter(function (d) { return (d.underlyingAssets || []).length > 1; }).length;
 
     var items = document.querySelectorAll('.stats-grid .stat-item');
@@ -582,7 +597,7 @@
       items[0].querySelector('.stat-value').className = 'stat-value ' + (approaching ? 'warning' : 'success');
       items[1].querySelector('.stat-value').textContent = knockIn + ' Deals';
       items[1].querySelector('.stat-value').className = 'stat-value ' + (knockIn ? 'warning' : 'success');
-      items[2].querySelector('.stat-value').textContent = avgCoupon + '%';
+      items[2].querySelector('.stat-value').textContent = avgCoupon;
       items[3].querySelector('.stat-value').textContent = multiStock + ' Deals';
     }
   }
