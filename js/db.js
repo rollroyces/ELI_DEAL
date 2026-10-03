@@ -318,55 +318,49 @@
   async function getCachedPrices(symbols) {
     await init();
     if (!db || !symbols || symbols.length === 0) return {};
+    var placeholders = symbols.map(function () { return '?'; }).join(',');
+    var out = {};
+    var now = Date.now();
     try {
-      var placeholders = symbols.map(function () { return '?'; }).join(',');
-      var stmt = db.prepare(
-        'SELECT symbol, price, timestamp FROM price_cache WHERE symbol IN (' + placeholders + ')'
+      var rows = db.exec(
+        'SELECT symbol, price, timestamp FROM price_cache WHERE symbol IN (' + placeholders + ')',
+        symbols
       );
-      stmt.run(symbols);
-      var out = {};
-      var now = Date.now();
-      while (stmt.step()) {
-        var sym = stmt.getString(0);
-        var price = stmt.getValue(1);
-        var ts = stmt.getValue(2);
-        out[sym] = { price: price, ageMs: now - ts };
-      }
-      stmt.free();
-      return out;
+      var list = (rows && rows[0] && rows[0].values) || [];
+      list.forEach(function (row) {
+        out[row[0]] = { price: row[1], ageMs: now - row[2] };
+      });
     } catch (e) {
       console.error('getCachedPrices failed:', e);
-      return {};
     }
+    console.log('[Db.getCachedPrices] requested=' + symbols.length + ' found=' + Object.keys(out).length);
+    return out;
   }
 
   async function setCachedPrices(prices) {
     await init();
     if (!db || !prices) return false;
-    try {
-      var syms = Object.keys(prices).filter(function (s) {
-        return typeof prices[s] === 'number';
-      });
-      if (syms.length === 0) return true;
-      var now = Date.now();
-      syms.forEach(function (sym) {
-        var sub = db.prepare(
-          'INSERT OR REPLACE INTO price_cache (symbol, price, timestamp) VALUES (?, ?, ?)'
+    var syms = Object.keys(prices).filter(function (s) {
+      return typeof prices[s] === 'number';
+    });
+    if (syms.length === 0) return true;
+    var now = Date.now();
+    var inserted = 0;
+    syms.forEach(function (sym) {
+      try {
+        // Use db.run() directly — the most stable sql.js API across versions.
+        db.run(
+          'INSERT OR REPLACE INTO price_cache (symbol, price, timestamp) VALUES (?, ?, ?)',
+          [sym, prices[sym], now]
         );
-        try {
-          sub.run([sym, prices[sym], now]);
-        } catch (e) {
-          console.warn('setCachedPrices row failed for', sym, e);
-        } finally {
-          try { sub.free(); } catch (_) {}
-        }
-      });
-      await flushToOpfs();
-      return true;
-    } catch (e) {
-      console.error('setCachedPrices failed:', e);
-      return false;
-    }
+        inserted++;
+      } catch (e) {
+        console.warn('setCachedPrices row failed for', sym, e);
+      }
+    });
+    try { await flushToOpfs(); } catch (e) { console.warn('flushToOpFS failed', e); }
+    console.log('[Db.setCachedPrices] inserted=' + inserted + ' / ' + syms.length);
+    return inserted > 0;
   }
 
   function clearCachedPrices() {
