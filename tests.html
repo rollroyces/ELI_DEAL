@@ -21,9 +21,9 @@
   <p class="note">Open <code>tests.html</code> in any browser (or via <code>https://rollroyces.github.io/ELI_DEAL/tests.html</code>). Tests run against the same <code>Storage</code> + <code>Db</code> modules the main app uses.</p>
   <pre id="out">Running…</pre>
 
-  <!-- Load all modules in dependency order -->
-  <script src="js/db.js"></script>
-  <script src="js/storage.js"></script>
+  <!-- Load all modules in dependency order (?v=2 cache-busts the Pages 10-min cache) -->
+  <script src="js/db.js?v=2"></script>
+  <script src="js/storage.js?v=2"></script>
   <script>
     var out = document.getElementById('out');
     function log(line) { out.textContent += '\n' + line; }

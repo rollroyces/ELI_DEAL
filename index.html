@@ -657,12 +657,14 @@
     <div id="toast-container" class="toast-container">
     </div>
 
-    <!-- Browser-side modules — load in dependency order -->
-    <script src="js/db.js"></script>
-    <script src="js/storage.js"></script>
-    <script src="js/yahoo-finance.js"></script>
-    <script src="js/finnhub.js"></script>
+    <!-- Browser-side modules — load in dependency order.
+         ?v=2 is a cache-bust so updates aren't held by the browser's
+         10-minute Pages cache after a deploy. -->
+    <script src="js/db.js?v=2"></script>
+    <script src="js/storage.js?v=2"></script>
+    <script src="js/yahoo-finance.js?v=2"></script>
+    <script src="js/finnhub.js?v=2"></script>
     <!-- Main app — must load last -->
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 </html>
