@@ -300,6 +300,18 @@
     return inMemoryDeals.length;
   }
 
+  // Wipe everything back to an empty schema.
+  async function clearAll() {
+    await init();
+    if (!db || !SQL) return false;
+    db.close();
+    db = new SQL.Database();
+    db.run(SCHEMA);
+    reloadInMemoryCache();
+    await flushToOpfs();
+    return true;
+  }
+
   function status() {
     return {
       backend: !db ? 'failed' : (useOpfs ? 'opfs' : 'memory'),
@@ -317,6 +329,7 @@
     getDeals: getDeals,
     exportFile: exportFile,
     importFile: importFile,
+    clearAll: clearAll,
     status: status,
     schemaSQL: SCHEMA
   };

@@ -52,12 +52,18 @@
     };
 
     (async function run() {
+        // ── Setup: wipe BOTH localStorage AND OPFS so test is isolated ──
+        await Db.ready();
+        await Db.clearAll();
+        localStorage.removeItem('eli_deals_v1');
+        localStorage.removeItem('eli_settings_v1');
+        await Storage.refresh();
+        if (typeof window.Db.clearAll === 'function') pass('Db.clearAll available for test isolation');
+
         // ── Storage layer (in-memory + localStorage) ──
         log('');
         log('── Storage layer (localStorage cache + async SQLite flush) ──');
 
-        localStorage.removeItem('eli_deals_v1');
-        localStorage.removeItem('eli_settings_v1');
         if (typeof window.Storage !== 'object') { fail('Storage loaded'); return; }
         pass('Storage module loaded');
 
@@ -100,7 +106,7 @@
         // Round-trip via .db file bytes
         Storage.addDeal(Object.assign({}, sample));
         Storage.addDeal(Object.assign({}, sample, { dealName: 'Second Deal' }));
-        await Db.ready();
+        await Storage.flush();
         var bytes = await Db.exportFile();
         if (bytes && bytes.byteLength > 0) pass('Db.exportFile() returns ' + bytes.byteLength + ' bytes');
         else fail('Db.exportFile returns bytes');
@@ -119,6 +125,11 @@
         if (fromDb.length >= 1) pass('Db.getDeals() returns the deals after import (' + fromDb.length + ')');
         else fail('Db.getDeals after import');
 
+        // Re-sync Storage cache after import
+        await Storage.refresh();
+        if (Storage.getDeals().length === fromDb.length) pass('Storage cache stays in sync with Db after import');
+        else fail('Storage cache sync after import');
+
         // Verify SQL schema is the real one
         var sqlTables = await Db.importFile(bytes);  // already imported, but for the next test
         try {
@@ -136,24 +147,28 @@
         log('');
         log('── Cross-device sync (simulated) ──');
 
-        // Simulate: download .db → upload .db on a "new device"
+        // Snapshot the current DB as bytes (simulates the Download .db File button)
         var exported = await Db.exportFile();
         log('   downloaded .db size: ' + exported.byteLength + ' bytes');
+        if (exported.byteLength > 4096) pass('.db file is non-trivial in size');
+        else fail('.db file size');
 
-        // Wipe everything
-        Storage.replaceAllDeals([]);
-        if (Storage.getDeals().length === 0) pass('wipe local cache');
+        // Wipe everything (simulates switching to a fresh browser/device)
+        await Db.clearAll();
+        await Storage.refresh();
+        if (Db.getDeals().length === 0 && Storage.getDeals().length === 0) pass('wiped both layers');
         else fail('wipe');
-        await Db.ready();
-        Db.importFile(exported).then(function () { /* re-load */ });
-        await Db.ready();
-        // Manually reload the in-memory cache from the imported Db
-        await Db.importFile(exported);
-        if (Db.getDeals().length >= 1) pass('cross-device restore: ' + Db.getDeals().length + ' deals back');
-        else fail('cross-device restore');
 
-        // ── Cleanup ──
-        Storage.replaceAllDeals([]);
+        // Restore from the saved bytes (simulates the Restore from .db File button)
+        await Db.importFile(exported);
+        await Storage.refresh();
+        var restoredCount = Db.getDeals().length;
+        if (restoredCount >= 1 && Storage.getDeals().length === restoredCount) pass('cross-device restore: ' + restoredCount + ' deals back');
+        else fail('cross-device restore: db=' + restoredCount + ' storage=' + Storage.getDeals().length);
+
+        // ── Cleanup so the main app starts fresh ──
+        await Db.clearAll();
+        await Storage.refresh();
         Storage.setSettings({ finnhubApiKey: '', alertThresholdPct: 10 });
 
         log('');
