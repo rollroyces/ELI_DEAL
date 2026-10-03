@@ -145,10 +145,29 @@
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // REWRITTEN: price refresh (Yahoo Finance + optional Finnhub fallback)
+  // Price cache TTLs (tunable)
   // ──────────────────────────────────────────────────────────────────
-  async function refreshPrices() {
-    console.log('Refreshing prices from Yahoo Finance (browser)…');
+  var CACHE_FRESH_MS = 30 * 60 * 1000;     // 30 min — call this "fresh", skip API
+  var CACHE_SOFT_MAX_MS = 24 * 60 * 60 * 1000; // 24 h — show it, but flag as stale
+
+  function describeAge(ageMs) {
+    if (ageMs == null) return 'never';
+    var mins = Math.round(ageMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    var hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + 'h ago';
+    var days = Math.round(hrs / 24);
+    return days + 'd ago';
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // REWRITTEN: price refresh (SQLite cache → Yahoo → Finnhub)
+  // ──────────────────────────────────────────────────────────────────
+  async function refreshPrices(opts) {
+    opts = opts || {};
+    var force = !!opts.force;   // bypass cache if true (manual Refresh Now)
+    console.log(force ? 'Force-refreshing from API…' : 'Refreshing prices (cache-aware)…');
     var refreshBtn = document.getElementById('manual-refresh');
     if (refreshBtn) {
       refreshBtn.classList.add('loading');
@@ -172,12 +191,38 @@
         return;
       }
 
-      // 1) Yahoo Finance — primary
-      var prices = await YahooFinance.getQuotes(symbols, { delay: 120 });
-      var source = 'yahoo';
+      // Step 1: SQLite price cache — pre-populate `prices` with anything < 30 min old
+      var prices = {};
+      var freshFromCache = 0;
+      var staleFromCache = 0;
+      try {
+        var cached = await Db.getCachedPrices(symbols);
+        Object.keys(cached).forEach(function (sym) {
+          var entry = cached[sym];
+          if (entry && typeof entry.price === 'number' && entry.ageMs < CACHE_FRESH_MS && !force) {
+            prices[sym] = entry.price;
+            freshFromCache++;
+          } else if (entry && typeof entry.price === 'number') {
+            staleFromCache++;
+          }
+        });
+      } catch (e) { /* ignore cache errors */ }
+
+      // Step 3: Yahoo Finance — only for symbols NOT fresh in cache
+      var needApi = symbols.filter(function (s) { return !(s in prices); });
+      if (needApi.length > 0) {
+        console.log('API call for', needApi.length, 'of', symbols.length, 'symbols (others fresh in cache)');
+        var live = await YahooFinance.getQuotes(needApi, { delay: 200 });
+        Object.keys(live).forEach(function (sym) {
+          if (typeof live[sym] === 'number') prices[sym] = live[sym];
+        });
+        // Persist any newly-fetched prices to SQLite
+        Db.setCachedPrices(live).catch(function () {});
+      }
+
       var failed = symbols.filter(function (s) { return prices[s] == null; });
 
-      // 2) Finnhub fallback for any symbols Yahoo couldn't return
+      // Step 4: Finnhub fallback for any remaining symbols
       if (failed.length && window.Finnhub && Finnhub.hasKey()) {
         console.log('Yahoo missed', failed.length, 'symbols; trying Finnhub…');
         for (var i = 0; i < failed.length; i++) {
@@ -187,13 +232,12 @@
               prices[failed[i]] = p;
               failed.splice(i, 1);
               i--;
-              source = 'finnhub';
             }
           } catch (e) { /* keep null */ }
         }
       }
 
-      // Apply prices + recompute deal metrics
+      // Step 5: Apply prices + recompute deal metrics
       var updated = 0, missing = 0;
       HKELIApp.data.eliDeals.forEach(function (deal) {
         (deal.underlyingAssets || []).forEach(function (asset) {
@@ -201,12 +245,11 @@
           if (typeof np === 'number') {
             asset.currentPrice = np;
             updated++;
-          } else if (missing++, missing++, null) {
+          } else {
             missing++;
           }
           if (typeof asset.currentPrice !== 'number') {
             asset.currentPrice = asset.strikePrice; // safe fallback so UI doesn't NaN
-            missing++;
           }
         });
         deal.currentValue = (deal.underlyingAssets || []).reduce(function (sum, a) {
@@ -220,10 +263,12 @@
       rebuildAlertsFromState();
 
       var now = Date.now();
-      HKELIApp.data.apiStatus.connected = updated > 0;
+      HKELIApp.data.apiStatus.connected = updated > 0 || freshFromCache > 0;
       HKELIApp.data.apiStatus.lastSuccessfulRefresh = now;
       HKELIApp.data.apiStatus.lastError = failed.length ? (failed.length + ' symbols unavailable') : null;
-      HKELIApp.data.apiStatus.source = updated > 0 ? source : 'none';
+      HKELIApp.data.apiStatus.source = updated > 0
+        ? (source === 'finnhub' ? 'finnhub' : 'yahoo')
+        : (freshFromCache > 0 ? 'cache' : 'none');
       HKELIApp.data.settings.lastRefresh = now;
       Storage.setSettings({ lastRefresh: now });
 
@@ -234,10 +279,15 @@
       updateRefreshDisplay();
       if (typeof updateRiskAnalytics === 'function') updateRiskAnalytics();
 
-      var msg = 'Prices refreshed (' + updated + ' updated';
-      if (missing) msg += ', ' + missing + ' unavailable';
-      msg += ')';
-      showToast(msg, updated > 0 ? 'success' : 'warning');
+      // Status message — distinguish "all from cache" vs "fetched new"
+      var parts = [];
+      if (freshFromCache > 0) parts.push(freshFromCache + ' from cache');
+      if (updated > 0) parts.push(updated + ' fetched');
+      if (missing > 0) parts.push(missing + ' unavailable');
+      var msg = parts.length
+        ? 'Prices: ' + parts.join(', ')
+        : 'No prices available';
+      showToast(msg, missing > 0 ? 'warning' : 'success');
     } catch (err) {
       console.error('Price refresh failed:', err);
       HKELIApp.data.apiStatus.connected = false;
@@ -1158,7 +1208,7 @@
     }
     updateRefreshCountdown();
   }
-  function performManualRefresh() { refreshPrices(); }
+  function performManualRefresh() { refreshPrices({ force: true }); }
 
   // ──────────────────────────────────────────────────────────────────
   // Export / Import
@@ -1524,7 +1574,10 @@
     updateAPIStatus();
     updateMarketOpenStatus();
     setInterval(updateMarketOpenStatus, 60000);
-    setInterval(checkBackendHealth, 30000);
+    // Health probe was every 30s — way too aggressive when we now have
+    // a SQLite price cache. Probe every 5 min instead, and only re-fetch
+    // prices if the cache is genuinely stale.
+    setInterval(checkBackendHealth, 5 * 60 * 1000);
     setInterval(updateRefreshCountdown, 60000);
     checkBackendHealth();
 

@@ -16,6 +16,14 @@
 
   var DEFAULT_DELAY_MS = 120; // small delay between sequential calls to avoid 429s
 
+  // Headers that make Yahoo treat us more like a normal browser.
+  var BROWSER_HEADERS = {
+    'Accept': 'application/json,text/plain,*/*',
+    'Accept-Language': 'en-US,en;q=0.9,zh-HK;q=0.8,zh;q=0.7',
+    'Origin': 'https://finance.yahoo.com',
+    'Referer': 'https://finance.yahoo.com/'
+  };
+
   function normalizeHkSymbol(symbol) {
     if (!symbol) return '';
     var s = String(symbol).trim().toUpperCase();
@@ -93,8 +101,10 @@
 
   /**
    * Batch fetch prices. Sequential with a small delay between calls to avoid 429s.
+   * Honors `options.cached` (symbol -> price) — any symbol present in
+   * `cached` with a non-null price is skipped (no API call).
    * @param {string[]} symbols
-   * @param {{delay?: number, signal?: AbortSignal}=} options
+   * @param {{delay?: number, signal?: AbortSignal, cached?: Object<string, number|null>}=} options
    * @returns {Promise<Object<string, number|null>>}  keyed by ORIGINAL symbol
    */
   async function getQuotes(symbols, options) {
@@ -102,15 +112,23 @@
     var delay = typeof options.delay === 'number' ? options.delay : DEFAULT_DELAY_MS;
     var result = {};
     var signal = options.signal;
+    var cached = options.cached || {};
 
     for (var i = 0; i < symbols.length; i++) {
       var original = symbols[i];
       var normalized = normalizeHkSymbol(original);
 
-      // Cache hit short-circuit
-      var cached = global.Storage && global.Storage.getCachedPrice(normalized);
-      if (cached != null) {
-        result[original] = cached;
+      // SQLite cache hit short-circuit — skip API call entirely
+      if (Object.prototype.hasOwnProperty.call(cached, normalized) &&
+          cached[normalized] != null) {
+        result[original] = cached[normalized];
+        continue;
+      }
+
+      // localStorage quick-cache as a backstop
+      var ls = global.Storage && global.Storage.getCachedPrice(normalized);
+      if (ls != null) {
+        result[original] = ls;
         continue;
       }
 
