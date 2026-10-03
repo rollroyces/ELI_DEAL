@@ -439,6 +439,7 @@
   // ──────────────────────────────────────────────────────────────────
   function renderDashboard() {
     updatePortfolioSummary();
+    updateDbStatusIndicator();
     var activityList = document.getElementById('activity-list');
     if (activityList) {
       var status = HKELIApp.data.apiStatus;
@@ -1239,6 +1240,69 @@
   function isoDate() { return new Date().toISOString().split('T')[0]; }
 
   // ──────────────────────────────────────────────────────────────────
+  // SQLite .db file export / import (real portable database)
+  // ──────────────────────────────────────────────────────────────────
+  function updateDbStatusIndicator() {
+    var status = Storage.dbStatus();
+    var backendEl = document.getElementById('db-backend-status');
+    var countEl = document.getElementById('db-record-count');
+    if (countEl) countEl.textContent = String(status.dealCount || 0);
+    if (backendEl) {
+      var labels = {
+        opfs: 'SQLite + OPFS (auto-saved)',
+        memory: 'SQLite in-memory (Safari / no OPFS)',
+        failed: 'Fallback mode (localStorage only)'
+      };
+      backendEl.textContent = labels[status.backend] || status.backend;
+    }
+  }
+
+  async function downloadDatabaseFile() {
+    var btn = document.getElementById('download-db');
+    if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+    try {
+      var bytes = await Storage.exportDatabaseFile();
+      if (!bytes) {
+        showToast('SQLite not available in this browser', 'error');
+        return;
+      }
+      var blob = new Blob([bytes], { type: 'application/x-sqlite3' });
+      downloadBlobFromBlob(blob, 'HK_ELI_' + isoDate() + '.db');
+      showToast('Downloaded HK_ELI.db (' + Math.round(bytes.length / 1024) + ' KB)', 'success');
+    } catch (e) {
+      showToast('Download failed: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+    }
+  }
+
+  async function importDatabaseFile(file) {
+    if (!confirm('Replace all current data with the uploaded .db file? This cannot be undone (export first if you want a backup).')) return;
+    try {
+      var bytes = new Uint8Array(await file.arrayBuffer());
+      var count = await Storage.importDatabaseFile(bytes);
+      loadDealsIntoState();
+      renderDashboard();
+      if (HKELIApp.currentView === 'deals') renderDeals();
+      if (HKELIApp.currentView === 'alerts') renderAlerts();
+      if (typeof updateRiskAnalytics === 'function') updateRiskAnalytics();
+      updateDbStatusIndicator();
+      showToast('Imported ' + count + ' deal(s) from .db file', 'success');
+      refreshPrices();
+    } catch (e) {
+      showToast('Import failed: ' + e.message, 'error');
+    }
+  }
+
+  function downloadBlobFromBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename; a.style.visibility = 'hidden';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Settings — Finnhub API key + refresh interval wiring
   // ──────────────────────────────────────────────────────────────────
   function applySettings() {
@@ -1294,6 +1358,17 @@
     on('save-to-db', 'click', function (e) { e.preventDefault(); saveDealsToDatabase(); });
     on('load-from-db', 'click', function (e) { e.preventDefault(); loadDealsFromDatabase(); });
     on('save-settings', 'click', function (e) { e.preventDefault(); applySettings(); });
+
+    // SQLite .db file buttons
+    on('download-db', 'click', function (e) { e.preventDefault(); downloadDatabaseFile(); });
+    var importDbBtn = document.getElementById('import-db-btn');
+    var importDbFile = document.getElementById('import-db');
+    if (importDbBtn && importDbFile) {
+      importDbBtn.addEventListener('click', function () { importDbFile.click(); });
+      importDbFile.addEventListener('change', function (e) {
+        if (e.target.files.length > 0) { importDatabaseFile(e.target.files[0]); e.target.value = ''; }
+      });
+    }
 
     var csvBtn = document.getElementById('import-csv-btn');
     var csvFile = document.getElementById('import-csv');
@@ -1353,6 +1428,11 @@
     updateNotificationBadge();
     updateRefreshDisplay();
     populateSettingsUI();
+    updateDbStatusIndicator();
+    // Refresh DB indicator after async SQLite init completes
+    if (window.Storage && Storage.dbStatus) {
+      Db.ready().then(updateDbStatusIndicator);
+    }
     updateAPIStatus();
     updateMarketOpenStatus();
     setInterval(updateMarketOpenStatus, 60000);

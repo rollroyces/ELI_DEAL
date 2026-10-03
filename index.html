@@ -382,9 +382,35 @@
 
                             <div class="card">
                                 <div class="card__body">
-                                    <h3>Backup &amp; Restore</h3>
-                                    <p class="form-help">All deal data lives in this browser. Use these buttons to back up your portfolio or move it to another device.</p>
+                                    <h3>SQLite Database (.db file)</h3>
+                                    <p class="form-help">A real <strong>SQLite</strong> database lives in your browser (via the Origin Private File System). Auto-saved on every change. You can download it as a portable <code>.db</code> file to open in <em>DB Browser for SQLite</em>, the <code>sqlite3</code> CLI, DBeaver, etc. — or copy it to another device.</p>
+                                    <div class="status-indicator-group" style="margin-bottom: 16px;">
+                                        <div class="status-item">
+                                            <span class="status-label">Storage backend</span>
+                                            <span class="status-text" id="db-backend-status">Checking…</span>
+                                        </div>
+                                        <div class="status-item">
+                                            <span class="status-label">Records</span>
+                                            <span class="status-text" id="db-record-count">0</span>
+                                        </div>
+                                    </div>
                                     <div class="data-actions">
+                                        <div class="action-group">
+                                            <h4>SQLite File</h4>
+                                            <p>Download the entire database as a portable <code>.db</code> file, or restore from one you've previously saved.</p>
+                                            <div class="action-buttons">
+                                                <button class="btn btn--primary" id="download-db" title="Download HK_ELI.db — opens in any SQLite tool">
+                                                    <i class="fas fa-database"></i>
+                                                    Download .db File
+                                                </button>
+                                                <input type="file" id="import-db" accept=".db,.sqlite,.sqlite3" class="hidden">
+                                                <button class="btn btn--secondary" id="import-db-btn" title="Replace current data with an uploaded .db file">
+                                                    <i class="fas fa-file-upload"></i>
+                                                    Restore from .db File
+                                                </button>
+                                            </div>
+                                        </div>
+
                                         <div class="action-group">
                                             <h4>Export Data</h4>
                                             <p>Download your portfolio for backup or transfer to another device</p>
@@ -632,6 +658,7 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order -->
+    <script src="js/db.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/yahoo-finance.js"></script>
     <script src="js/finnhub.js"></script>
