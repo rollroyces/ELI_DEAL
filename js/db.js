@@ -312,6 +312,55 @@
     return true;
   }
 
+  // ── Price cache helpers ────────────────────────────────────────────────
+  // Returns { symbol -> { price, ageMs } } for any cached symbols.
+  // Use ageMs to decide whether the cache is still fresh enough.
+  async function getCachedPrices(symbols) {
+    await init();
+    if (!db) return {};
+    try {
+      var placeholders = symbols.map(function () { return '?'; }).join(',');
+      var stmt = db.prepare(
+        'SELECT symbol, price, timestamp FROM price_cache WHERE symbol IN (' + placeholders + ')'
+      );
+      stmt.bind(symbols);
+      var out = {};
+      var now = Date.now();
+      while (stmt.step()) {
+        var sym = stmt.getString(0);
+        var price = stmt.getValue(1);
+        var ts = stmt.getValue(2);
+        out[sym] = { price: price, ageMs: now - ts };
+      }
+      stmt.free();
+      return out;
+    } catch (e) { return {}; }
+  }
+
+  async function setCachedPrices(prices) {
+    await init();
+    if (!db || !prices) return false;
+    try {
+      var stmt = db.prepare(
+        'INSERT OR REPLACE INTO price_cache (symbol, price, timestamp) VALUES (?, ?, ?)'
+      );
+      var now = Date.now();
+      Object.keys(prices).forEach(function (sym) {
+        var price = prices[sym];
+        if (typeof price !== 'number') return;
+        stmt.run([sym, price, now]);
+      });
+      stmt.free();
+      await flushToOpfs();
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function clearCachedPrices() {
+    if (!db) return;
+    try { db.run('DELETE FROM price_cache'); } catch (e) {}
+  }
+
   function status() {
     return {
       backend: !db ? 'failed' : (useOpfs ? 'opfs' : 'memory'),
@@ -330,6 +379,9 @@
     exportFile: exportFile,
     importFile: importFile,
     clearAll: clearAll,
+    getCachedPrices: getCachedPrices,
+    setCachedPrices: setCachedPrices,
+    clearCachedPrices: clearCachedPrices,
     status: status,
     schemaSQL: SCHEMA
   };

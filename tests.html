@@ -143,6 +143,31 @@
           fail('schema check', e.message);
         }
 
+        // ── Price cache (SQLite) ──
+        log('');
+        log('── Price cache (reduces API calls) ──');
+
+        if (typeof Db.setCachedPrices === 'function') pass('Db.setCachedPrices available');
+        else fail('Db.setCachedPrices missing');
+
+        await Db.setCachedPrices({ '0700.HK': 412.5, '9988.HK': 88.2 });
+        var cached = await Db.getCachedPrices(['0700.HK', '9988.HK', '0005.HK']);
+        if (cached['0700.HK'] && cached['0700.HK'].price === 412.5) pass('Db.getCachedPrices returns the saved prices');
+        else fail('Db.getCachedPrices returned: ' + JSON.stringify(cached));
+        if (cached['0005.HK'] == null) pass('Db.getCachedPrices returns null for un-cached symbols');
+        else fail('un-cached symbol should be null');
+        if (cached['0700.HK'].ageMs < 5000) pass('Db.getCachedPrices returns ageMs');
+        else fail('ageMs: ' + cached['0700.HK'].ageMs);
+
+        // Verify clearing
+        Db.clearCachedPrices();
+        var afterClear = await Db.getCachedPrices(['0700.HK']);
+        if (afterClear['0700.HK'] == null) pass('Db.clearCachedPrices wipes the price_cache table');
+        else fail('Db.clearCachedPrices did not clear cache');
+
+        // Re-seed for downstream tests
+        await Db.setCachedPrices({ '0700.HK': 412.5, '9988.HK': 88.2 });
+
         // ── Cross-device sync scenario ──
         log('');
         log('── Cross-device sync (simulated) ──');
