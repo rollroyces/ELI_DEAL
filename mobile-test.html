@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mobile viewport test — HK ELI</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #0e1116; color: #eaeaea;
+               font-family: -apple-system, system-ui, monospace; height: 100vh; }
+    .frame { width: 390px; height: 780px; margin: 20px auto;
+            border: 2px solid #4fc3f7; border-radius: 28px; overflow: hidden;
+            box-shadow: 0 0 60px rgba(79, 195, 247, 0.3); position: relative; }
+    iframe { width: 100%; height: 100%; border: 0; }
+    .title { text-align: center; padding: 20px; font-size: 14px; color: #94a3b8; }
+    .title h1 { color: #4fc3f7; margin: 0 0 8px 0; font-size: 18px; }
+    .note { font-size: 12px; max-width: 600px; margin: 0 auto; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center; color:#4fc3f7; margin: 20px 0 4px 0;">Mobile Viewport Test</h1>
+  <div class="title">
+    <p>iPhone-sized iframe (390 × 780) loading the demo. Try the hamburger menu in the top-left.</p>
+  </div>
+  <div class="frame">
+    <iframe src="demo.html"></iframe>
+  </div>
+</body>
+</html>
