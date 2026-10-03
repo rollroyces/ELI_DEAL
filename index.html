@@ -164,6 +164,26 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Stale-price notice: only shows when the price source is unreachable -->
+                    <div id="price-source-banner" class="card hidden" style="border-left: 4px solid #facc15; margin-top: 24px;">
+                        <div class="card__body">
+                            <h3 style="color: #facc15;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Live prices not updating
+                            </h3>
+                            <p style="margin: 8px 0 12px;">
+                                Yahoo Finance is rate-limited from your browser. Showing fallback prices.
+                                Get free live data in 2 minutes — sign up at
+                                <a href="https://finnhub.io" target="_blank" rel="noopener" style="color: #4fc3f7;">finnhub.io</a>
+                                and paste your API key in
+                                <a href="#" id="banner-go-settings" style="color: #4fc3f7;">Settings → Price Source</a>.
+                            </p>
+                            <button class="btn btn--secondary btn--sm" id="dismiss-price-banner" type="button">
+                                Dismiss
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ELI Deals View -->
@@ -468,13 +488,29 @@
                             <div class="card">
                                 <div class="card__body">
                                     <h3>Price Source</h3>
+                                    <p class="form-help">
+                                        Yahoo Finance is the default but is often blocked / rate-limited from browsers.
+                                        For reliable live prices, sign up free at
+                                        <a href="https://finnhub.io" target="_blank" rel="noopener" style="color: #4fc3f7;">finnhub.io</a>
+                                        (60 calls/min, no credit card) and paste the key here.
+                                    </p>
                                     <div class="form-group">
                                         <label class="form-label">Finnhub API Key (optional fallback)</label>
-                                        <input type="text" class="form-control" id="finnhub-api-key"
-                                               placeholder="Paste your free key from finnhub.io">
+                                        <div style="display: flex; gap: 8px;">
+                                            <input type="text" class="form-control" id="finnhub-api-key"
+                                                   placeholder="Paste your free key from finnhub.io"
+                                                   style="flex: 1;">
+                                            <button type="button" class="btn btn--secondary btn--sm" id="test-price-source" style="white-space: nowrap;">
+                                                <i class="fas fa-stethoscope"></i>
+                                                Test
+                                            </button>
+                                        </div>
                                         <small class="form-help">
-                                            Yahoo Finance is used by default (no key required). Add a Finnhub key here as a fallback when Yahoo is rate-limiting. Stored only in this browser.
+                                            Used as fallback when Yahoo Finance fails. Stored only in this browser.
                                         </small>
+                                    </div>
+                                    <div id="price-source-probe" class="form-help" style="background: var(--color-bg-2, #161b22); padding: 10px; border-radius: 6px; margin: 8px 0;">
+                                        Click <strong>Test</strong> to probe the price source…
                                     </div>
                                     <div class="status-indicator-group">
                                         <div class="status-item">

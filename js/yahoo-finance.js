@@ -143,10 +143,28 @@
     }
   }
 
+  /**
+   * Probe the price source and return a detailed status object the UI
+   * can show next to the Settings → Price Source panel.
+   *   { ok: bool, message: string, latencyMs?: number }
+   */
+  async function probe() {
+    var t0 = Date.now();
+    try {
+      var p = await getQuote('0700.HK');
+      var latencyMs = Date.now() - t0;
+      if (p != null) return { ok: true, message: 'Yahoo Finance responded with HK$ ' + p.toFixed(2) + ' for 0700.HK in ' + latencyMs + ' ms', latencyMs: latencyMs };
+      return { ok: false, message: 'Yahoo Finance did not return a price (rate-limited or blocked)' };
+    } catch (e) {
+      return { ok: false, message: 'Yahoo Finance error: ' + (e.message || e) };
+    }
+  }
+
   global.YahooFinance = {
     normalizeHkSymbol: normalizeHkSymbol,
     getQuote: getQuote,
     getQuotes: getQuotes,
-    ping: ping
+    ping: ping,
+    probe: probe
   };
 })(window);

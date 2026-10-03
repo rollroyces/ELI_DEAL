@@ -278,12 +278,47 @@
           : 'Connected (Yahoo)';
       } else {
         dot.className = 'status-dot error';
-        txt.textContent = 'Offline';
+        txt.textContent = 'Offline (showing fallback prices)';
       }
     }
     if (last) {
       var t = HKELIApp.data.apiStatus.lastSuccessfulRefresh;
       last.textContent = t ? new Date(t).toLocaleTimeString() + ' HKT' : 'Never';
+    }
+    // Show the dashboard banner whenever prices failed in the last refresh
+    var banner = document.getElementById('price-source-banner');
+    if (banner) {
+      var dismissed = false;
+      try { dismissed = sessionStorage.getItem('eli_banner_dismissed') === '1'; } catch (_) {}
+      var showBanner = !HKELIApp.data.apiStatus.connected && !dismissed
+        && HKELIApp.data.eliDeals && HKELIApp.data.eliDeals.length > 0;
+      banner.classList.toggle('hidden', !showBanner);
+    }
+  }
+
+  // Test the price source from Settings → Price Source → Test button.
+  async function testPriceSource() {
+    var out = document.getElementById('price-source-probe');
+    if (out) out.textContent = 'Probing Yahoo Finance…';
+    var yf = await YahooFinance.probe();
+    if (out) {
+      out.style.background = yf.ok ? 'rgba(74, 222, 128, 0.1)' : 'rgba(248, 113, 113, 0.1)';
+      out.innerHTML = yf.ok
+        ? '✓ Yahoo Finance: ' + yf.message
+        : '✗ Yahoo Finance: ' + yf.message;
+    }
+    if (!yf.ok && window.Finnhub && Finnhub.hasKey()) {
+      if (out) out.innerHTML += '\n\nProbing Finnhub fallback…';
+      var fh = await Finnhub.ping();
+      if (out) {
+        out.innerHTML += fh
+          ? '\n✓ Finnhub: reachable (will be used as fallback for live prices)'
+          : '\n✗ Finnhub: key set but API call failed';
+      }
+    } else if (!yf.ok) {
+      if (out) {
+        out.innerHTML += '\n\nNo Finnhub key set — paste one in the field above to enable the fallback.';
+      }
     }
   }
 
@@ -1358,6 +1393,20 @@
     on('save-to-db', 'click', function (e) { e.preventDefault(); saveDealsToDatabase(); });
     on('load-from-db', 'click', function (e) { e.preventDefault(); loadDealsFromDatabase(); });
     on('save-settings', 'click', function (e) { e.preventDefault(); applySettings(); });
+
+    // Test price source
+    on('test-price-source', 'click', function (e) { e.preventDefault(); testPriceSource(); });
+    on('dismiss-price-banner', 'click', function (e) {
+      e.preventDefault();
+      var b = document.getElementById('price-source-banner');
+      if (b) b.classList.add('hidden');
+      try { sessionStorage.setItem('eli_banner_dismissed', '1'); } catch (_) {}
+    });
+    var bannerLink = document.getElementById('banner-go-settings');
+    if (bannerLink) bannerLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      switchView('settings');
+    });
 
     // SQLite .db file buttons
     on('download-db', 'click', function (e) { e.preventDefault(); downloadDatabaseFile(); });
