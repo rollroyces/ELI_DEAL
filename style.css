@@ -2334,3 +2334,64 @@ select.form-control {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-primary-hover);
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Mobile navigation: hamburger button + slide-in sidebar + backdrop
+   ────────────────────────────────────────────────────────────────── */
+
+/* Hamburger button — hidden by default (desktop), shown on mobile */
+.sidebar-toggle {
+  display: none;
+  background: transparent;
+  border: 0;
+  padding: 8px 10px;
+  margin-right: 8px;
+  border-radius: 6px;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.sidebar-toggle:hover {
+  background: var(--color-secondary);
+}
+.sidebar-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Backdrop (mobile) — invisible until sidebar is open */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1400;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-normal) var(--ease-standard);
+}
+.sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (max-width: 768px) {
+  /* Show hamburger */
+  .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* When sidebar is open on mobile, dim + click-to-close the rest */
+  body.sidebar-open {
+    overflow: hidden;
+  }
+}
+
+/* Even on wider screens, the backdrop shouldn't appear */
+@media (min-width: 769px) {
+  .sidebar-backdrop {
+    display: none !important;
+  }
+}
