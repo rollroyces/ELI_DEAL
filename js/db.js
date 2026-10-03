@@ -317,13 +317,13 @@
   // Use ageMs to decide whether the cache is still fresh enough.
   async function getCachedPrices(symbols) {
     await init();
-    if (!db) return {};
+    if (!db || !symbols || symbols.length === 0) return {};
     try {
       var placeholders = symbols.map(function () { return '?'; }).join(',');
       var stmt = db.prepare(
         'SELECT symbol, price, timestamp FROM price_cache WHERE symbol IN (' + placeholders + ')'
       );
-      stmt.bind(symbols);
+      stmt.run(symbols);
       var out = {};
       var now = Date.now();
       while (stmt.step()) {
@@ -334,26 +334,39 @@
       }
       stmt.free();
       return out;
-    } catch (e) { return {}; }
+    } catch (e) {
+      console.error('getCachedPrices failed:', e);
+      return {};
+    }
   }
 
   async function setCachedPrices(prices) {
     await init();
     if (!db || !prices) return false;
     try {
-      var stmt = db.prepare(
-        'INSERT OR REPLACE INTO price_cache (symbol, price, timestamp) VALUES (?, ?, ?)'
-      );
-      var now = Date.now();
-      Object.keys(prices).forEach(function (sym) {
-        var price = prices[sym];
-        if (typeof price !== 'number') return;
-        stmt.run([sym, price, now]);
+      var syms = Object.keys(prices).filter(function (s) {
+        return typeof prices[s] === 'number';
       });
-      stmt.free();
+      if (syms.length === 0) return true;
+      var now = Date.now();
+      syms.forEach(function (sym) {
+        var sub = db.prepare(
+          'INSERT OR REPLACE INTO price_cache (symbol, price, timestamp) VALUES (?, ?, ?)'
+        );
+        try {
+          sub.run([sym, prices[sym], now]);
+        } catch (e) {
+          console.warn('setCachedPrices row failed for', sym, e);
+        } finally {
+          try { sub.free(); } catch (_) {}
+        }
+      });
       await flushToOpfs();
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      console.error('setCachedPrices failed:', e);
+      return false;
+    }
   }
 
   function clearCachedPrices() {
