@@ -27,6 +27,10 @@
     <header class="app-header">
       <div class="header-content">
         <div class="header-left">
+          <button id="sidebar-toggle" class="sidebar-toggle" type="button"
+                  aria-label="Toggle navigation" aria-controls="primary-sidebar" aria-expanded="false">
+            <i class="fas fa-bars"></i>
+          </button>
           <div class="logo">
             <i class="fas fa-chart-line"></i>
             <span>HK ELI Portfolio Manager</span>
@@ -64,7 +68,8 @@
     </header>
 
     <div class="main-layout">
-      <nav class="sidebar">
+      <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+      <nav class="sidebar" id="primary-sidebar">
         <div class="nav-items">
           <div class="nav-item active" data-view="dashboard">
             <i class="fas fa-tachometer-alt"></i><span>Dashboard</span>

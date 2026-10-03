@@ -1361,6 +1361,21 @@
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Mobile sidebar (hamburger) toggle
+  // ──────────────────────────────────────────────────────────────────
+  function setSidebarOpen(open) {
+    var sidebar = document.getElementById('primary-sidebar');
+    var backdrop = document.getElementById('sidebar-backdrop');
+    var toggle = document.getElementById('sidebar-toggle');
+    if (!sidebar || !backdrop) return;
+    sidebar.classList.toggle('open', open);
+    backdrop.classList.toggle('open', open);
+    backdrop.hidden = !open;
+    document.body.classList.toggle('sidebar-open', open);
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Event wiring
   // ──────────────────────────────────────────────────────────────────
   function setupEventListeners() {
@@ -1368,7 +1383,31 @@
       item.addEventListener('click', function (e) {
         e.preventDefault(); e.stopPropagation();
         switchView(item.dataset.view);
+        // On mobile, close the sidebar overlay after navigation
+        setSidebarOpen(false);
       });
+    });
+
+    // Mobile sidebar hamburger
+    var sidebarToggle = document.getElementById('sidebar-toggle');
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var isOpen = document.getElementById('primary-sidebar').classList.contains('open');
+        setSidebarOpen(!isOpen);
+      });
+    }
+    var sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    if (sidebarBackdrop) {
+      sidebarBackdrop.addEventListener('click', function () { setSidebarOpen(false); });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    });
+    // Close sidebar when window grows past mobile breakpoint
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 768) setSidebarOpen(false);
     });
 
     function on(id, evt, fn) {
