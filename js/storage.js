@@ -1,8 +1,26 @@
 /**
- * Browser-side persistence layer.
- * Replaces the Flask + MySQL/SQLite backend that the original project used.
- * All data lives in localStorage, so it stays in this browser profile.
- * Use Export/Import (CSV/JSON) in Settings to move data across devices.
+ * Storage facade.
+ *
+ * The UI calls these methods synchronously and they return from an
+ * in-memory cache that mirrors SQLite. Writes go through the cache
+ * immediately (so the next read is correct) and then asynchronously
+ * persist to both SQLite (js/db.js → OPFS) and localStorage (legacy
+ * fallback / migration source).
+ *
+ * Layout:
+ *   ┌────────────────────────────────────────────────────────────┐
+ *   │  app.js  ──>  Storage (this file)  ──>  in-memory cache    │
+ *   │                              │                             │
+ *   │                              ├─>  localStorage (sync)      │
+ *   │                              └─>  Db (js/db.js → OPFS)     │
+ *   └────────────────────────────────────────────────────────────┘
+ *
+ * Migration:
+ *   - On first init, if SQLite (OPFS) is empty but localStorage has
+ *     deals, we lift the localStorage data into SQLite and keep
+ *     localStorage in sync going forward.
+ *   - If SQLite isn't available (sql.js failed to load), we run in
+ *     localStorage-only mode and `Db.status().backend === 'failed'`.
  */
 (function (global) {
   'use strict';
@@ -13,141 +31,173 @@
   var KEY_VERSION = 'eli_schema_version';
   var CURRENT_SCHEMA = 1;
 
-  function safeRead(key, fallback) {
-    try {
-      var raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : fallback;
-    } catch (e) {
-      console.warn('storage read failed for', key, e);
-      return fallback;
-    }
-  }
-
-  function safeWrite(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (e) {
-      console.error('storage write failed for', key, e);
-      return false;
-    }
-  }
-
-  // ─── Schema migration hook ─────────────────────────────────────────
-  function ensureSchema() {
-    var v = parseInt(localStorage.getItem(KEY_VERSION) || '0', 10);
-    if (v < CURRENT_SCHEMA) {
-      // Future migrations go here.
-      localStorage.setItem(KEY_VERSION, String(CURRENT_SCHEMA));
-    }
-  }
-
-  // ─── Deals ─────────────────────────────────────────────────────────
-  function getDeals() {
-    return safeRead(KEY_DEALS, []);
-  }
-
-  function setDeals(deals) {
-    return safeWrite(KEY_DEALS, deals || []);
-  }
-
-  function generateDealId() {
-    var ts = Date.now().toString(36).toUpperCase();
-    var rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-    return 'ELI-HK-' + ts.slice(-6) + rand;
-  }
-
-  function addDeal(deal) {
-    var deals = getDeals();
-    deal.id = deal.id || generateDealId();
-    deal.createdAt = deal.createdAt || new Date().toISOString();
-    deals.push(deal);
-    setDeals(deals);
-    return deal;
-  }
-
-  function updateDeal(dealId, updates) {
-    var deals = getDeals();
-    var idx = -1;
-    for (var i = 0; i < deals.length; i++) {
-      if (deals[i].id === dealId) { idx = i; break; }
-    }
-    if (idx === -1) return null;
-    deals[idx] = Object.assign({}, deals[idx], updates, { updatedAt: new Date().toISOString() });
-    setDeals(deals);
-    return deals[idx];
-  }
-
-  function deleteDeal(dealId) {
-    var deals = getDeals();
-    var next = deals.filter(function (d) { return d.id !== dealId; });
-    setDeals(next);
-    return next.length !== deals.length;
-  }
-
-  function replaceAllDeals(deals) {
-    // Used by Import to wipe and reload cleanly.
-    setDeals(deals || []);
-  }
-
-  // ─── Settings ──────────────────────────────────────────────────────
   var DEFAULT_SETTINGS = {
     refreshInterval: 14400000, // 4 hours
     lastRefresh: null,
-    finnhubApiKey: '',         // optional user-supplied
+    finnhubApiKey: '',
     alertThresholdPct: 10,
     currencyDisplay: 'hkd'
   };
 
-  function getSettings() {
-    var s = safeRead(KEY_SETTINGS, null);
-    if (!s) return Object.assign({}, DEFAULT_SETTINGS);
-    // Merge defaults so new fields appear for existing users.
-    return Object.assign({}, DEFAULT_SETTINGS, s);
+  // ── Sync helpers (localStorage only) ────────────────────────────────
+  function safeRead(key, fallback) {
+    try {
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) { return fallback; }
+  }
+  function safeWrite(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) { return false; }
   }
 
+  // ── In-memory cache (mirrors SQLite) ─────────────────────────────────
+  var memDeals = [];
+  var memSettings = Object.assign({}, DEFAULT_SETTINGS);
+  var memPriceCache = {};
+  var memReady = false;
+
+  function ensureReady() {
+    if (memReady) return;
+    memReady = true;
+    memDeals = safeRead(KEY_DEALS, []);
+    memSettings = Object.assign({}, DEFAULT_SETTINGS, safeRead(KEY_SETTINGS, null) || {});
+    memPriceCache = safeRead(KEY_PRICE_CACHE, {});
+    // Schema bookkeeping (no migration needed yet)
+    if (parseInt(localStorage.getItem(KEY_VERSION) || '0', 10) < CURRENT_SCHEMA) {
+      localStorage.setItem(KEY_VERSION, String(CURRENT_SCHEMA));
+    }
+  }
+
+  function backfillDealRuntime(d) {
+    d.underlyingAssets = (d.underlyingAssets || []).map(function (a) {
+      return Object.assign({ currentPrice: a.strikePrice }, a);
+    });
+    d.currentValue = typeof d.currentValue === 'number' ? d.currentValue : d.purchasePrice || 0;
+    d.pnl = typeof d.pnl === 'number' ? d.pnl : 0;
+    return d;
+  }
+
+  function syncMemDealsFromArray(arr) {
+    memDeals = (arr || []).map(backfillDealRuntime);
+  }
+
+  // ── Async backend sync (fire-and-forget) ─────────────────────────────
+  function asyncPersistDeals() {
+    var snapshot = JSON.parse(JSON.stringify(memDeals));
+    safeWrite(KEY_DEALS, snapshot);
+    if (global.Db && global.Db.ready) {
+      global.Db.ready().then(function () {
+        if (global.Db && global.Db.saveDeals) global.Db.saveDeals(snapshot);
+      });
+    }
+  }
+  function asyncPersistSettings() {
+    safeWrite(KEY_SETTINGS, memSettings);
+  }
+  function asyncPersistPriceCache() {
+    safeWrite(KEY_PRICE_CACHE, memPriceCache);
+  }
+
+  // ── Init / migration ────────────────────────────────────────────────
+  async function init() {
+    ensureReady();
+    if (!global.Db || !global.Db.ready) return;
+    try {
+      await global.Db.ready();
+      var fromDb = global.Db.getDeals();
+      if (fromDb && fromDb.length > 0) {
+        // SQLite is authoritative.
+        syncMemDealsFromArray(fromDb);
+        safeWrite(KEY_DEALS, memDeals);
+      } else if (memDeals.length > 0) {
+        // Migrate from localStorage into SQLite.
+        await global.Db.saveDeals(memDeals);
+      }
+    } catch (e) { /* fall back to localStorage silently */ }
+  }
+
+  // ── Deals API ───────────────────────────────────────────────────────
+  function getDeals() { ensureReady(); return memDeals.slice(); }
+  function setDeals(deals) {
+    ensureReady();
+    syncMemDealsFromArray(deals);
+    asyncPersistDeals();
+  }
+  function addDeal(deal) {
+    ensureReady();
+    deal.id = deal.id || ('ELI-HK' + String(Date.now()).slice(-6));
+    deal.createdAt = deal.createdAt || new Date().toISOString();
+    memDeals.push(deal);
+    asyncPersistDeals();
+    return deal;
+  }
+  function updateDeal(dealId, updates) {
+    ensureReady();
+    var idx = -1;
+    for (var i = 0; i < memDeals.length; i++) {
+      if (memDeals[i].id === dealId) { idx = i; break; }
+    }
+    if (idx === -1) return null;
+    memDeals[idx] = Object.assign({}, memDeals[idx], updates, { updatedAt: new Date().toISOString() });
+    asyncPersistDeals();
+    return memDeals[idx];
+  }
+  function deleteDeal(dealId) {
+    ensureReady();
+    var before = memDeals.length;
+    memDeals = memDeals.filter(function (d) { return d.id !== dealId; });
+    var removed = memDeals.length !== before;
+    if (removed) asyncPersistDeals();
+    return removed;
+  }
+  function replaceAllDeals(deals) {
+    ensureReady();
+    syncMemDealsFromArray(deals);
+    asyncPersistDeals();
+  }
+
+  // ── Settings API ────────────────────────────────────────────────────
+  function getSettings() { ensureReady(); return Object.assign({}, memSettings); }
   function setSettings(partial) {
-    var merged = Object.assign({}, getSettings(), partial || {});
-    return safeWrite(KEY_SETTINGS, merged);
+    ensureReady();
+    memSettings = Object.assign({}, memSettings, partial || {});
+    asyncPersistSettings();
   }
 
-  // ─── Price cache (TTL-based) ────────────────────────────────────────
-  var PRICE_TTL_MS = 180 * 1000; // 3 min
-
-  function getPriceCache() {
-    return safeRead(KEY_PRICE_CACHE, {});
-  }
-
+  // ── Price cache ─────────────────────────────────────────────────────
+  var PRICE_TTL_MS = 180 * 1000;
+  function getPriceCache() { ensureReady(); return memPriceCache; }
   function getCachedPrice(symbol) {
-    var cache = getPriceCache();
-    var entry = cache[symbol];
+    ensureReady();
+    var entry = memPriceCache[symbol];
     if (!entry) return null;
     if (Date.now() - entry.timestamp > PRICE_TTL_MS) return null;
     return entry.price;
   }
-
   function setCachedPrice(symbol, price) {
-    var cache = getPriceCache();
-    cache[symbol] = { price: price, timestamp: Date.now() };
-    // Trim very-old entries to keep storage tidy.
+    ensureReady();
+    memPriceCache[symbol] = { price: price, timestamp: Date.now() };
     var cutoff = Date.now() - PRICE_TTL_MS * 4;
-    Object.keys(cache).forEach(function (k) {
-      if (cache[k].timestamp < cutoff) delete cache[k];
+    Object.keys(memPriceCache).forEach(function (k) {
+      if (memPriceCache[k].timestamp < cutoff) delete memPriceCache[k];
     });
-    safeWrite(KEY_PRICE_CACHE, cache);
+    asyncPersistPriceCache();
   }
-
   function clearPriceCache() {
-    localStorage.removeItem(KEY_PRICE_CACHE);
+    ensureReady();
+    memPriceCache = {};
+    asyncPersistPriceCache();
   }
 
-  // ─── Bulk import/export helpers ────────────────────────────────────
+  // ── Bulk export / import ────────────────────────────────────────────
   function exportAll() {
+    ensureReady();
     return {
       schemaVersion: CURRENT_SCHEMA,
       exportedAt: new Date().toISOString(),
-      deals: getDeals(),
-      settings: getSettings()
+      deals: memDeals,
+      settings: memSettings
     };
   }
 
@@ -155,33 +205,48 @@
     if (!payload || typeof payload !== 'object') {
       throw new Error('Invalid import payload');
     }
-    if (Array.isArray(payload.deals)) {
-      setDeals(payload.deals);
-    }
-    if (payload.settings && typeof payload.settings === 'object') {
-      setSettings(payload.settings);
-    }
+    if (Array.isArray(payload.deals)) replaceAllDeals(payload.deals);
+    if (payload.settings && typeof payload.settings === 'object') setSettings(payload.settings);
   }
 
-  ensureSchema();
+  // ── Database (real .db file) export / import ───────────────────────
+  async function exportDatabaseFile() {
+    if (!global.Db) return null;
+    return await global.Db.exportFile();
+  }
+
+  async function importDatabaseFile(bytes) {
+    if (!global.Db) throw new Error('SQLite layer not loaded');
+    var n = await global.Db.importFile(bytes);
+    memDeals = global.Db.getDeals();
+    safeWrite(KEY_DEALS, memDeals);
+    return n;
+  }
+
+  function dbStatus() {
+    return global.Db ? global.Db.status() : { backend: 'unavailable', ready: false };
+  }
+
+  // ── Init on load ────────────────────────────────────────────────────
+  // Fire-and-forget so app.js's init() doesn't need to await us.
+  init();
 
   global.Storage = {
-    // deals
     getDeals: getDeals,
     setDeals: setDeals,
     addDeal: addDeal,
     updateDeal: updateDeal,
     deleteDeal: deleteDeal,
     replaceAllDeals: replaceAllDeals,
-    // settings
     getSettings: getSettings,
     setSettings: setSettings,
-    // price cache
     getCachedPrice: getCachedPrice,
     setCachedPrice: setCachedPrice,
     clearPriceCache: clearPriceCache,
-    // bulk
     exportAll: exportAll,
-    importAll: importAll
+    importAll: importAll,
+    exportDatabaseFile: exportDatabaseFile,
+    importDatabaseFile: importDatabaseFile,
+    dbStatus: dbStatus
   };
 })(window);
