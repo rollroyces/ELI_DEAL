@@ -34,6 +34,53 @@ endpoint, and an optional Finnhub key can be set as a fallback.
 - **HKEX market-hours indicator** (Mon–Fri 9:30–12:00 and 13:00–16:00 HKT)
 - Mobile-friendly responsive UI
 
+### Payoff + history
+
+- **Payoff Projector** — for any deal, project the cash-equivalent payoff at
+  maturity using worst-performer logic (par redemption if no knock-in,
+  worst-performer physical otherwise). Adjust a shock slider (-50%…+20%)
+  to see how a uniform move across all underlyings would change the deal.
+- **Per-symbol price history** — daily snapshots recorded automatically on
+  every successful refresh. Spans up to 90 days (auto-pruned) and powers
+  the per-deal drawdown analysis.
+- **Scenario Simulator** — stress-test the whole portfolio with a uniform
+  shock or a worst-of-only shock and see how each deal would settle.
+
+### Smarter analytics
+
+- **Sector concentration doughnut** — exposure broken down by Hang Seng
+  sector (Technology, Financials, Real Estate, Utilities, etc.).
+- **Issuer exposure chart** — share of portfolio value by issuing bank.
+- **Per-deal max-drawdown list** — the worst peak-to-trough move on the
+  weakest underlying of each deal.
+- **Payoff sweep curve** — payoff vs uniform shock, with the knock-in
+  threshold marked automatically.
+
+### UX polish
+
+- **Dark mode toggle** in the header (cycles auto → light → dark; persisted
+  to localStorage).
+- **Keyboard shortcuts** — `N` new deal, `R` refresh prices, `1`–`7` switch
+  views, `/` focus search, `?` show shortcut help, `Esc` close modal/sidebar.
+- **Settings tabs** — the four long cards are now collapsed into a tab
+  strip (Data Refresh, Market Prefs, SQLite, Price Source).
+- **Accessibility** — aria-labels on icon-only buttons, focus-visible
+  outlines, screen-reader announcements for toasts (`role="status"`,
+  `aria-live="polite"`).
+
+### Engineering quality
+
+- **JSDoc typedefs** in `js/types.js` for IDE intellisense (`Deal`,
+  `UnderlyingAsset`, `Alert`, `PayoffProjection`, etc.).
+- **Expanded test suite** — `tests.html` now covers payoff math, sector
+  tagging, price-history persistence, max-drawdown, and live Yahoo calls
+  (network permitting).
+- **CI workflow** — `.github/workflows/ci.yml` runs on every push: JS
+  syntax check, JSDoc sanity, required-files presence, JSON validity,
+  HTML smoke, README sanity. No external dependencies.
+- **PWA support** — installable via `manifest.webmanifest`, offline shell
+  via `sw.js`. Financial APIs are NEVER cached (stale prices = bad).
+
 ---
 
 ## 🆚 What changed vs the old Docker version
@@ -118,16 +165,25 @@ ELI_DEAL/
 ├── index.html                 # App shell — loads the modules below
 ├── style.css                  # Design system + application styles
 ├── app.js                     # Main app: UI, state, rendering, events
+├── manifest.webmanifest       # PWA manifest (installable, theme color, shortcuts)
+├── sw.js                      # Service worker (offline shell, no price caching)
+├── assets/                    # PWA icons (192 + 512)
 ├── js/
-│   ├── storage.js             # localStorage wrapper (deals, settings, price cache)
+│   ├── types.js               # JSDoc typedefs + ELI_CONSTANTS (IDE hints only)
+│   ├── db.js                  # SQLite (sql.js) + OPFS persistence + price cache
+│   ├── storage.js             # localStorage wrapper (deals, settings, cache)
 │   ├── yahoo-finance.js       # Direct fetch to Yahoo Finance chart endpoint
-│   └── finnhub.js             # Optional fallback when user supplies a key
+│   ├── finnhub.js             # Optional fallback when user supplies a key
+│   ├── sectors.js             # HK sector tagging for analytics
+│   └── payoff.js              # Worst-performer payoff calculator + history helpers
 ├── .github/workflows/
-│   └── deploy.yml             # Auto-deploy to GitHub Pages on push
+│   ├── deploy.yml             # Auto-deploy to GitHub Pages on push
+│   └── ci.yml                 # JS syntax + JSDoc sanity + required files + JSON
 ├── .nojekyll                  # Skip Jekyll processing on Pages
 ├── .gitignore
 ├── LICENSE                    # MIT
-└── README.md
+├── README.md
+└── tests.html                 # Inline browser test suite (open in browser)
 ```
 
 ---
@@ -207,6 +263,21 @@ A deal is a plain JSON object:
   browser profile can see it. For a public/shared machine, leave the key
   blank and rely on Yahoo Finance only.
 - The app does **not** collect or transmit your deal data anywhere.
+
+---
+
+## ⌨️ Keyboard shortcuts
+
+| Key | Action |
+| --- | --- |
+| `N` | New ELI deal |
+| `R` | Force-refresh prices |
+| `1` – `7` | Switch to view (Dashboard / Deals / Analytics / Payoff / Scenarios / Alerts / Settings) |
+| `/` | Focus the deals search box |
+| `?` | Show keyboard help |
+| `Esc` | Close any open modal or mobile sidebar |
+
+Shortcuts are ignored while typing in a form control.
 
 ---
 

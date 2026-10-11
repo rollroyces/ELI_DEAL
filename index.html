@@ -45,7 +45,7 @@
                             aria-label="Toggle dark mode" title="Toggle dark mode">
                         <i class="fas fa-moon"></i>
                     </button>
-                    <div class="notifications" id="notifications-bell">
+                    <div class="notifications" id="notifications-bell" role="button" tabindex="0" aria-label="Open alerts popover">
                         <i class="fas fa-bell"></i>
                         <span class="notification-badge" id="notification-count">0</span>
                         <div class="alert-popover hidden" id="alert-popover">
@@ -252,7 +252,8 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <input type="text" class="form-control" id="search-deals" placeholder="Search HK stocks or deals...">
+                            <label for="search-deals" class="sr-only">Search deals</label>
+                            <input type="text" class="form-control" id="search-deals" placeholder="Search HK stocks or deals..." aria-label="Search deals">
                         </div>
                     </div>
 
@@ -329,6 +330,43 @@
                                                 <span class="risk-value">High</span>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-row">
+                            <div class="analytics-card">
+                                <div class="card">
+                                    <div class="card__body">
+                                        <h3>Sector Concentration</h3>
+                                        <p class="form-help">Exposure by Hang Seng sector across all underlying assets.</p>
+                                        <div class="chart-container" style="position: relative; height: 300px;">
+                                            <canvas id="sector-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="analytics-card">
+                                <div class="card">
+                                    <div class="card__body">
+                                        <h3>Issuer Exposure</h3>
+                                        <p class="form-help">Share of portfolio value by issuing bank.</p>
+                                        <div class="chart-container" style="position: relative; height: 300px;">
+                                            <canvas id="issuer-chart"></canvas>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-row">
+                            <div class="analytics-card">
+                                <div class="card">
+                                    <div class="card__body">
+                                        <h3>Per-deal Max Drawdown</h3>
+                                        <p class="form-help">Largest peak-to-trough move on the worst-performing underlying since you started tracking.</p>
+                                        <div id="max-drawdown-list"></div>
                                     </div>
                                 </div>
                             </div>
@@ -709,7 +747,7 @@
         <div class="modal-content large">
             <div class="modal-header">
                 <h2 id="modal-title">Add New HK ELI Deal</h2>
-                <button class="modal-close" id="close-modal">
+                <button class="modal-close" id="close-modal" type="button" aria-label="Close dialog">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -815,7 +853,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Confirm Delete</h2>
-                <button class="modal-close" id="close-delete-modal">
+                <button class="modal-close" id="close-delete-modal" type="button" aria-label="Close dialog">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -844,7 +882,7 @@
         <div class="modal-content large">
             <div class="modal-header">
                 <h2 id="deal-detail-title">Deal Details</h2>
-                <button class="modal-close" id="close-detail-modal">
+                <button class="modal-close" id="close-detail-modal" type="button" aria-label="Close dialog">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -856,21 +894,21 @@
     </div>
 
     <!-- Toast Container -->
-    <div id="toast-container" class="toast-container">
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite">
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=6 is a cache-bust so updates aren't held by the browser's
+         ?v=7 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=6"></script>
-    <script src="js/storage.js?v=6"></script>
-    <script src="js/yahoo-finance.js?v=6"></script>
-    <script src="js/finnhub.js?v=6"></script>
-    <script src="js/sectors.js?v=6"></script>
-    <script src="js/payoff.js?v=6"></script>
-    <script src="js/types.js?v=6"></script>
+    <script src="js/db.js?v=7"></script>
+    <script src="js/storage.js?v=7"></script>
+    <script src="js/yahoo-finance.js?v=7"></script>
+    <script src="js/finnhub.js?v=7"></script>
+    <script src="js/sectors.js?v=7"></script>
+    <script src="js/payoff.js?v=7"></script>
+    <script src="js/types.js?v=7"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=7"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {

@@ -218,11 +218,19 @@
         });
         // Persist any newly-fetched prices to SQLite
         Db.setCachedPrices(live).catch(function () {});
+        // Record daily snapshots for price history (used by max-drawdown
+        // + the Payoff view's per-symbol chart).
+        if (typeof Db.recordSnapshots === 'function') {
+          Db.recordSnapshots(live, 'yahoo').catch(function (e) {
+            console.warn('recordSnapshots failed', e);
+          });
+        }
       }
 
       var failed = symbols.filter(function (s) { return prices[s] == null; });
 
       // Step 4: Finnhub fallback for any remaining symbols
+      var finnhubFilled = {};
       if (failed.length && window.Finnhub && Finnhub.hasKey()) {
         console.log('Yahoo missed', failed.length, 'symbols; trying Finnhub…');
         for (var i = 0; i < failed.length; i++) {
@@ -230,10 +238,16 @@
             var p = await Finnhub.getQuote(failed[i]);
             if (p != null) {
               prices[failed[i]] = p;
+              finnhubFilled[failed[i]] = p;
               failed.splice(i, 1);
               i--;
             }
           } catch (e) { /* keep null */ }
+        }
+        if (typeof Db.recordSnapshots === 'function' && Object.keys(finnhubFilled).length) {
+          Db.recordSnapshots(finnhubFilled, 'finnhub').catch(function (e) {
+            console.warn('recordSnapshots (finnhub) failed', e);
+          });
         }
       }
 
@@ -394,6 +408,7 @@
   // ──────────────────────────────────────────────────────────────────
   async function loadDealsFromDatabase() {
     loadDealsIntoState();
+    refreshDealViews();
     reassignELIIds();
     renderDashboard();
     if (HKELIApp.currentView === 'deals') renderDeals();
@@ -442,6 +457,18 @@
     HKELIApp.data.eliDeals.forEach(function (deal) {
       deal.id = idMap.get(deal);
     });
+  }
+
+  // Re-render any views currently shown that depend on the deal list.
+  // Called after add/edit/delete/import/clear to keep all views in sync.
+  function refreshDealViews() {
+    if (HKELIApp.currentView === 'deals') renderDeals();
+    else if (HKELIApp.currentView === 'alerts') renderAlerts();
+    else if (HKELIApp.currentView === 'analytics') setupCharts();
+    else if (HKELIApp.currentView === 'payoff') {
+      populatePayoffDealSelect();
+      renderPayoffView();
+    } else if (HKELIApp.currentView === 'scenarios') renderScenariosView();
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -673,8 +700,8 @@
       '<div class="deal-header-right">' +
         '<div class="deal-status ' + statusClass + '">' + deal.status + '</div>' +
         '<div class="deal-actions">' +
-          '<button class="deal-action-btn edit" title="Edit"><i class="fas fa-edit"></i></button>' +
-          '<button class="deal-action-btn delete" title="Delete"><i class="fas fa-trash"></i></button>' +
+          '<button class="deal-action-btn edit" type="button" aria-label="Edit deal" title="Edit"><i class="fas fa-edit" aria-hidden="true"></i></button>' +
+          '<button class="deal-action-btn delete" type="button" aria-label="Delete deal" title="Delete"><i class="fas fa-trash" aria-hidden="true"></i></button>' +
         '</div></div></div>' +
       '<div class="deal-pricing">' +
         '<div class="pricing-row"><span class="pricing-label">Nominal Amount:</span><span class="pricing-value hk-currency">' + formatHKCurrency(deal.nominalAmount) + '</span></div>' +
@@ -831,6 +858,7 @@
     if (!HKELIApp.deletingDealId) return;
     Storage.deleteDeal(HKELIApp.deletingDealId);
     loadDealsIntoState();
+    refreshDealViews();
     reassignELIIds();
     persistDeals();
     hideDeleteConfirmation();
@@ -952,6 +980,7 @@
       showToast('Deal added', 'success');
     }
     loadDealsIntoState();
+    refreshDealViews();
     reassignELIIds();
     persistDeals();
     hideAddDealModal();
@@ -1019,7 +1048,88 @@
         options: { responsive: true, maintainAspectRatio: false }
       });
     }
+
+    // Sector concentration (uses Sectors module from js/sectors.js)
+    if (typeof Sectors !== 'undefined') {
+      var sectorEl = document.getElementById('sector-chart');
+      var sectorTotals = {};
+      deals.forEach(function (d) {
+        (d.underlyingAssets || []).forEach(function (a) {
+          var s = Sectors.lookup(a.symbol).sector;
+          sectorTotals[s] = (sectorTotals[s] || 0) + (d.currentValue || 0) * (a.weight || 0);
+        });
+      });
+      var sectorLabels = Object.keys(sectorTotals).sort(function (a, b) {
+        return Sectors.SECTOR_ORDER.indexOf(a) - Sectors.SECTOR_ORDER.indexOf(b);
+      });
+      var sectorData = sectorLabels.map(function (k) { return sectorTotals[k]; });
+      if (sectorEl) {
+        if (HKELIApp.charts.sector) HKELIApp.charts.sector.destroy();
+        HKELIApp.charts.sector = new Chart(sectorEl.getContext('2d'), {
+          type: 'doughnut',
+          data: { labels: sectorLabels, datasets: [{ data: sectorData }] },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }
+    }
+
+    // Issuer exposure
+    var issuerEl = document.getElementById('issuer-chart');
+    var issuerTotals = {};
+    deals.forEach(function (d) {
+      issuerTotals[d.issuer || 'Unknown'] = (issuerTotals[d.issuer || 'Unknown'] || 0) + (d.currentValue || 0);
+    });
+    var issuerLabels = Object.keys(issuerTotals);
+    var issuerData = issuerLabels.map(function (k) { return issuerTotals[k]; });
+    if (issuerEl) {
+      if (HKELIApp.charts.issuer) HKELIApp.charts.issuer.destroy();
+      HKELIApp.charts.issuer = new Chart(issuerEl.getContext('2d'), {
+        type: 'bar',
+        data: { labels: issuerLabels, datasets: [{ label: 'HK$', data: issuerData }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          indexAxis: 'y',
+          scales: { x: { ticks: { callback: function (v) { return 'HK$' + (v / 1000) + 'k'; } } } }
+        }
+      });
+    }
+
     if (typeof updateRiskAnalytics === 'function') updateRiskAnalytics();
+    renderMaxDrawdownList();
+  }
+
+  // Per-deal max-drawdown list (reads price_history from SQLite)
+  function renderMaxDrawdownList() {
+    var el = document.getElementById('max-drawdown-list');
+    if (!el) return;
+    var deals = HKELIApp.data.eliDeals;
+    if (!deals.length) { el.innerHTML = '<p class="form-help">No deals to analyze.</p>'; return; }
+    if (typeof Db === 'undefined' || typeof Payoff === 'undefined') return;
+    var symbols = [];
+    deals.forEach(function (d) { (d.underlyingAssets || []).forEach(function (a) {
+      if (symbols.indexOf(a.symbol) === -1) symbols.push(a.symbol);
+    }); });
+    Db.getPriceHistory(symbols).then(function (history) {
+      var rows = deals.map(function (d) {
+        var best = null;
+        (d.underlyingAssets || []).forEach(function (a) {
+          var h = history[a.symbol] || [];
+          var dd = Payoff.maxDrawdown(h);
+          if (!best || dd.maxDrawdownPct < best.dd.maxDrawdownPct) {
+            best = { symbol: a.symbol, dd: dd, current: a.currentPrice };
+          }
+        });
+        if (!best) return '';
+        var ddPct = best.dd.maxDrawdownPct;
+        var klass = ddPct >= 30 ? 'negative' : ddPct >= 15 ? 'warning' : 'positive';
+        return '<div class="drawdown-row">'
+          + '<div class="drawdown-deal"><strong>' + d.dealName + '</strong><br><small class="form-help">' + best.symbol + '</small></div>'
+          + '<div class="drawdown-bar"><div class="drawdown-fill ' + klass + '" style="width: ' + Math.min(100, Math.abs(ddPct) * 2) + '%"></div></div>'
+          + '<div class="drawdown-value ' + klass + '">' + ddPct.toFixed(1) + '%</div>'
+          + '</div>';
+      }).join('');
+      el.innerHTML = rows || '<p class="form-help">No history yet — prices recorded from every refresh will appear here.</p>';
+    });
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1161,6 +1271,305 @@
       '</div>';
     }).join('');
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Payoff view (worst-performer projection per deal)
+  // ──────────────────────────────────────────────────────────────────
+  var payoffCharts = {};
+  function populatePayoffDealSelect() {
+    var sel = document.getElementById('payoff-deal-select');
+    if (!sel) return;
+    var prev = sel.value;
+    var opts = '<option value="">— Select a deal —</option>'
+      + HKELIApp.data.eliDeals.map(function (d) {
+          return '<option value="' + d.id + '">' + d.dealName + ' (' + d.id + ')</option>';
+        }).join('');
+    sel.innerHTML = opts;
+    if (prev && HKELIApp.data.eliDeals.some(function (d) { return d.id === prev; })) {
+      sel.value = prev;
+    }
+  }
+
+  function payoffCurrentShockPct() {
+    var el = document.getElementById('payoff-shock-input');
+    return el ? (parseFloat(el.value) / 100) : 0;
+  }
+
+  function renderPayoffView() {
+    var sel = document.getElementById('payoff-deal-select');
+    var empty = document.getElementById('payoff-empty');
+    var detail = document.getElementById('payoff-detail');
+    if (!sel) return;
+    if (!sel.value) {
+      if (empty) empty.classList.remove('hidden');
+      if (detail) detail.classList.add('hidden');
+      return;
+    }
+    var deal = HKELIApp.data.eliDeals.find(function (d) { return d.id === sel.value; });
+    if (!deal) {
+      if (empty) empty.classList.remove('hidden');
+      if (detail) detail.classList.add('hidden');
+      return;
+    }
+    if (empty) empty.classList.add('hidden');
+    if (detail) detail.classList.remove('hidden');
+
+    var shock = payoffCurrentShockPct();
+    var shockClone = JSON.parse(JSON.stringify(deal));
+    (shockClone.underlyingAssets || []).forEach(function (a) {
+      a.hypotheticalPrice = (a.currentPrice || a.strikePrice) * (1 + shock);
+    });
+    var proj = Payoff.projectPayoff(shockClone);
+
+    var cashEl = document.getElementById('payoff-cash');
+    var coupEl = document.getElementById('payoff-coupon');
+    var totalEl = document.getElementById('payoff-total');
+    var knockinEl = document.getElementById('payoff-knockin');
+    var worstEl = document.getElementById('payoff-worst');
+    if (cashEl) cashEl.textContent = formatHKCurrency(proj.cashPayoff);
+    if (coupEl) coupEl.textContent = formatHKCurrency(proj.coupon);
+    if (totalEl) {
+      totalEl.textContent = (proj.totalReturn >= 0 ? '+' : '') + formatHKCurrency(proj.totalReturn)
+        + ' (' + (proj.totalReturnPct * 100).toFixed(2) + '%)';
+      totalEl.className = proj.totalReturn >= 0 ? 'positive' : 'negative';
+    }
+    if (knockinEl) {
+      knockinEl.textContent = proj.knockInTriggered ? 'Knock-in triggered' : 'No knock-in';
+      knockinEl.className = proj.knockInTriggered ? 'negative' : 'positive';
+    }
+    if (worstEl) {
+      var pct = (proj.worstReturnPct * 100).toFixed(2);
+      worstEl.textContent = 'Worst: ' + proj.worstSymbol + ' (' + pct + '%)';
+    }
+
+    // Per-symbol table
+    var tbl = document.getElementById('payoff-table');
+    if (tbl) {
+      var rows = (deal.underlyingAssets || []).map(function (a) {
+        var hp = (a.currentPrice || a.strikePrice) * (1 + shock);
+        var ret = a.strikePrice ? ((hp - a.strikePrice) / a.strikePrice) * 100 : 0;
+        var distBarrier = a.barrierLevel ? ((hp - a.barrierLevel) / a.barrierLevel) * 100 : null;
+        var tag = Sectors.lookup(a.symbol);
+        return '<tr>'
+          + '<td><strong>' + a.symbol + '</strong><br><small class="form-help">' + (a.name || '') + '</small></td>'
+          + '<td><span class="badge badge-sector">' + tag.sector + '</span></td>'
+          + '<td>' + formatHKPrice(a.strikePrice) + '</td>'
+          + '<td>' + formatHKPrice(a.barrierLevel) + '</td>'
+          + '<td>' + formatHKPrice(a.currentPrice) + '</td>'
+          + '<td>' + formatHKPrice(hp) + '</td>'
+          + '<td class="' + (ret >= 0 ? 'positive' : 'negative') + '">' + (ret >= 0 ? '+' : '') + ret.toFixed(2) + '%</td>'
+          + '<td class="' + (distBarrier == null ? '' : (distBarrier <= 0 ? 'negative' : (distBarrier < 10 ? 'warning' : ''))) + '">'
+          + (distBarrier == null ? '—' : (distBarrier.toFixed(2) + '% above'))
+          + '</td>'
+          + '<td>' + ((a.weight * 100).toFixed(0)) + '%</td>'
+          + '</tr>';
+      }).join('');
+      tbl.innerHTML = '<thead><tr><th>Symbol</th><th>Sector</th><th>Strike</th><th>Barrier</th>'
+        + '<th>Current</th><th>Hypothetical</th><th>Return</th><th>vs Barrier</th><th>Weight</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody>';
+    }
+
+    // Payoff curve sweep
+    var sweep = Payoff.sweepShocks(deal, { from: -0.5, to: 0.2, steps: 15 });
+    var curveCanvas = document.getElementById('payoff-curve-chart');
+    if (curveCanvas && typeof Chart !== 'undefined') {
+      if (payoffCharts.curve) payoffCharts.curve.destroy();
+      var labels = sweep.shocks.map(function (s) { return (s * 100).toFixed(0) + '%'; });
+      var data = sweep.returns.map(function (r) { return +(r * 100).toFixed(3); });
+      payoffCharts.curve = new Chart(curveCanvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Total return (%)',
+            data: data,
+            borderColor: '#4fc3f7',
+            backgroundColor: 'rgba(79,195,247,0.15)',
+            fill: true,
+            tension: 0.25,
+            pointRadius: 3
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            y: { ticks: { callback: function (v) { return v + '%'; } } },
+            x: { title: { display: true, text: 'Uniform shock to all underlyings' } }
+          }
+        }
+      });
+    }
+
+    renderPayoffHistoryChart(deal);
+  }
+
+  function renderPayoffHistoryChart(deal) {
+    var canvas = document.getElementById('payoff-history-chart');
+    var emptyEl = document.getElementById('payoff-history-empty');
+    if (!canvas || typeof Chart === 'undefined' || typeof Db === 'undefined') return;
+    Db.getPriceHistory(
+      (deal.underlyingAssets || []).map(function (a) { return a.symbol; }),
+      { limit: 90 }
+    ).then(function (history) {
+      var any = Object.keys(history).some(function (k) { return history[k].length > 1; });
+      if (emptyEl) emptyEl.classList.toggle('hidden', any);
+      var dateSet = Object.create(null);
+      Object.keys(history).forEach(function (sym) {
+        history[sym].forEach(function (h) {
+          dateSet[new Date(h.timestamp).toISOString().slice(0, 10)] = true;
+        });
+      });
+      var dates = Object.keys(dateSet).sort();
+      var palette = ['#4fc3f7', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#f472b6'];
+      var datasets = Object.keys(history).map(function (sym, idx) {
+        var points = dates.map(function (d) {
+          var match = history[sym].find(function (h) {
+            return new Date(h.timestamp).toISOString().slice(0, 10) === d;
+          });
+          return match ? match.price : null;
+        });
+        return {
+          label: sym,
+          data: points,
+          borderColor: palette[idx % palette.length],
+          backgroundColor: 'transparent',
+          spanGaps: true,
+          tension: 0.2,
+          pointRadius: 2
+        };
+      });
+      if (payoffCharts.history) payoffCharts.history.destroy();
+      payoffCharts.history = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels: dates, datasets: datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            y: { ticks: { callback: function (v) { return 'HK$' + v; } } },
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }
+          },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    });
+  }
+
+  function setupPayoffEventListeners() {
+    var sel = document.getElementById('payoff-deal-select');
+    var slider = document.getElementById('payoff-shock-input');
+    var shockVal = document.getElementById('payoff-shock-value');
+    if (sel) sel.addEventListener('change', renderPayoffView);
+    if (slider) {
+      slider.addEventListener('input', function () {
+        if (shockVal) shockVal.textContent = slider.value + '%';
+      });
+      slider.addEventListener('change', renderPayoffView);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Scenarios view (uniform or worst-of stress test across portfolio)
+  // ──────────────────────────────────────────────────────────────────
+  function renderScenariosView() {
+    var mode = document.getElementById('scenario-mode');
+    var slider = document.getElementById('scenario-shock-input');
+    var valEl = document.getElementById('scenario-shock-value');
+    var runBtn = document.getElementById('scenario-run-btn');
+    var tbl = document.getElementById('scenario-table');
+    if (!slider || !tbl) return;
+
+    function shock() { return parseFloat(slider.value) / 100; }
+
+    function refreshSlider() {
+      if (valEl) valEl.textContent = (slider.value > 0 ? '+' : '') + slider.value + '%';
+    }
+    refreshSlider();
+
+    function run() {
+      var deals = HKELIApp.data.eliDeals;
+      if (!deals.length) {
+        tbl.innerHTML = '<tr><td>No deals yet.</td></tr>';
+        return;
+      }
+      var modeVal = mode ? mode.value : 'uniform';
+      var s = shock();
+      var totals = { before: 0, after: 0, knockIn: 0 };
+      var rows = deals.map(function (deal) {
+        var clone = JSON.parse(JSON.stringify(deal));
+        if (modeVal === 'uniform') {
+          (clone.underlyingAssets || []).forEach(function (a) {
+            a.hypotheticalPrice = (a.currentPrice || a.strikePrice) * (1 + s);
+          });
+        } else {
+          var w = Payoff.worstPerformer(clone.underlyingAssets);
+          if (w) {
+            (clone.underlyingAssets || []).forEach(function (a) {
+              if (a.symbol === w.asset.symbol) {
+                a.hypotheticalPrice = (a.currentPrice || a.strikePrice) * (1 + s);
+              } else {
+                a.hypotheticalPrice = a.currentPrice;
+              }
+            });
+          }
+        }
+        var proj = Payoff.projectPayoff(clone);
+        totals.before += deal.currentValue || 0;
+        totals.after += proj.cashPayoff;
+        if (proj.knockInTriggered) totals.knockIn++;
+        var pnlClass = proj.totalReturn >= 0 ? 'positive' : 'negative';
+        return '<tr>'
+          + '<td><strong>' + deal.dealName + '</strong><br><small class="form-help">' + deal.id + '</small></td>'
+          + '<td>' + formatHKCurrency(deal.currentValue) + '</td>'
+          + '<td>' + (proj.knockInTriggered ? '<span class="badge badge-knockin">Knock-in</span>' : '<span class="badge badge-par">Par</span>') + '</td>'
+          + '<td>' + formatHKCurrency(proj.cashPayoff) + '</td>'
+          + '<td class="' + pnlClass + '">' + (proj.totalReturn >= 0 ? '+' : '') + formatHKCurrency(proj.totalReturn)
+          + '<br><small>' + (proj.totalReturnPct * 100).toFixed(2) + '%</small></td>'
+          + '<td>' + proj.worstSymbol + '<br><small>(' + (proj.worstReturnPct * 100).toFixed(2) + '%)</small></td>'
+          + '</tr>';
+      }).join('');
+      var totPnl = totals.after - totals.before;
+      var totPct = totals.before > 0 ? (totPnl / totals.before) * 100 : 0;
+      var header = '<tr>'
+        + '<th>Deal</th><th>Current value</th><th>Status</th><th>Cash at maturity</th><th>P&L (vs current)</th><th>Worst performer</th>'
+        + '</tr>';
+      tbl.innerHTML = '<thead>' + header + '</thead><tbody>' + rows
+        + '<tr style="font-weight:600; border-top:2px solid var(--color-border);">'
+        + '<td>Total</td>'
+        + '<td>' + formatHKCurrency(totals.before) + '</td>'
+        + '<td>' + totals.knockIn + ' knock-ins</td>'
+        + '<td>' + formatHKCurrency(totals.after) + '</td>'
+        + '<td class="' + (totPnl >= 0 ? 'positive' : 'negative') + '">'
+        + (totPnl >= 0 ? '+' : '') + formatHKCurrency(totPnl)
+        + '<br><small>' + totPct.toFixed(2) + '%</small></td>'
+        + '<td>—</td>'
+        + '</tr></tbody>';
+
+      var resultEl = document.getElementById('scenario-result');
+      if (resultEl) {
+        var label = (s >= 0 ? '+' : '') + (s * 100).toFixed(0) + '%';
+        var desc = modeVal === 'uniform'
+          ? 'Every underlying dropped/gained ' + label + '.'
+          : 'Only the current worst performer dropped/gained ' + label + '.';
+        resultEl.innerHTML = '<div class="card"><div class="card__body"><h3>Scenario: ' + desc + '</h3>'
+          + '<p>Portfolio cash at maturity: <strong>' + formatHKCurrency(totals.after)
+          + '</strong> (currently ' + formatHKCurrency(totals.before) + ').</p></div></div>';
+      }
+    }
+
+    if (slider && !slider.dataset.boundRun) {
+      slider.dataset.boundRun = '1';
+      slider.addEventListener('input', refreshSlider);
+    }
+    if (runBtn && !runBtn.dataset.boundRun) {
+      runBtn.dataset.boundRun = '1';
+      runBtn.addEventListener('click', run);
+    }
+    if (mode && !mode.dataset.boundRun) {
+      mode.dataset.boundRun = '1';
+      mode.addEventListener('change', run);
+    }
+    run();
+  }
   function updateNotificationBadge() {
     var badge = document.getElementById('notification-count');
     if (badge) badge.textContent = HKELIApp.data.alerts.length;
@@ -1290,6 +1699,7 @@
         });
         Storage.replaceAllDeals(imported);
         loadDealsIntoState();
+        refreshDealViews();
         showToast('Imported ' + imported.length + ' deals from CSV', 'success');
         refreshPrices();
         renderDashboard();
@@ -1306,6 +1716,7 @@
         var payload = JSON.parse(e.target.result);
         Storage.importAll(payload);
         loadDealsIntoState();
+        refreshDealViews();
         renderDashboard();
         if (HKELIApp.currentView === 'deals') renderDeals();
         if (HKELIApp.currentView === 'alerts') renderAlerts();
@@ -1322,6 +1733,7 @@
     Storage.replaceAllDeals([]);
     HKELIApp.data.alerts = [];
     loadDealsIntoState();
+    refreshDealViews();
     renderDashboard();
     if (HKELIApp.currentView === 'deals') renderDeals();
     if (HKELIApp.currentView === 'alerts') renderAlerts();
@@ -1382,6 +1794,7 @@
       var bytes = new Uint8Array(await file.arrayBuffer());
       var count = await Storage.importDatabaseFile(bytes);
       loadDealsIntoState();
+      refreshDealViews();
       renderDashboard();
       if (HKELIApp.currentView === 'deals') renderDeals();
       if (HKELIApp.currentView === 'alerts') renderAlerts();
@@ -1562,6 +1975,159 @@
         else hideDeleteConfirmation();
       }});
     });
+
+    setupPayoffEventListeners();
+    setupThemeToggle();
+    setupSettingsTabs();
+    setupKeyboardShortcuts();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Theme toggle (auto / light / dark, persisted in Storage)
+  // ──────────────────────────────────────────────────────────────────
+  function applyTheme(theme) {
+    theme = theme || 'auto';
+    var root = document.documentElement;
+    if (theme === 'auto') {
+      root.removeAttribute('data-color-scheme');
+    } else {
+      root.setAttribute('data-color-scheme', theme);
+    }
+    var btn = document.getElementById('theme-toggle');
+    if (btn) {
+      var icon = btn.querySelector('i');
+      var effective = theme === 'auto'
+        ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+        : theme;
+      if (icon) icon.className = effective === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+      btn.setAttribute('aria-label', 'Toggle dark mode (current: ' + effective + ')');
+      btn.setAttribute('title', 'Toggle dark mode (current: ' + effective + ')');
+    }
+  }
+
+  function setupThemeToggle() {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    var settings = Storage.getSettings();
+    applyTheme(settings.theme || 'auto');
+    btn.addEventListener('click', function () {
+      var s = Storage.getSettings();
+      var current = s.theme || 'auto';
+      // Cycle auto → light → dark → auto
+      var next = current === 'auto' ? 'light' : current === 'light' ? 'dark' : 'auto';
+      Storage.setSettings({ theme: next });
+      applyTheme(next);
+      showToast('Theme: ' + next, 'info', 1500);
+    });
+    if (window.matchMedia) {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+        var s = Storage.getSettings();
+        if ((s.theme || 'auto') === 'auto') applyTheme('auto');
+      });
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Settings tabs (collapse 4 long cards into a tabbed UI)
+  // ──────────────────────────────────────────────────────────────────
+  function setupSettingsTabs() {
+    var grid = document.querySelector('.settings-grid');
+    var cards = grid ? Array.from(grid.children) : [];
+    if (!grid || cards.length === 0) return;
+    var tabs = cards.map(function (card) {
+      var titleEl = card.querySelector('h3');
+      var label = titleEl ? titleEl.textContent : 'Section';
+      var key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      card.setAttribute('data-settings-tab-content', key);
+      return { key: key, label: label };
+    });
+    var tabBar = document.createElement('div');
+    tabBar.className = 'settings-tabs';
+    tabBar.setAttribute('role', 'tablist');
+    tabs.forEach(function (t, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'settings-tab' + (i === 0 ? ' active' : '');
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+      b.dataset.tab = t.key;
+      b.textContent = t.label;
+      tabBar.appendChild(b);
+    });
+    grid.parentNode.insertBefore(tabBar, grid);
+    cards.forEach(function (c, i) {
+      c.style.display = i === 0 ? '' : 'none';
+    });
+    tabBar.addEventListener('click', function (e) {
+      var btn = e.target.closest('.settings-tab');
+      if (!btn) return;
+      var key = btn.dataset.tab;
+      tabBar.querySelectorAll('.settings-tab').forEach(function (b) {
+        var active = b === btn;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      cards.forEach(function (c) {
+        c.style.display = c.getAttribute('data-settings-tab-content') === key ? '' : 'none';
+      });
+    });
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Keyboard shortcuts: N (new), R (refresh), 1-5 (nav), ? (help), /
+  // (focus search). Ignored when typing in inputs.
+  // ──────────────────────────────────────────────────────────────────
+  function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT'
+                || (t.getAttribute && t.getAttribute('contenteditable') === 'true'))) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      var k = e.key.toLowerCase();
+      if (k === 'n' && !e.shiftKey) {
+        e.preventDefault();
+        showAddDealModal();
+      } else if (k === 'r' && !e.shiftKey) {
+        e.preventDefault();
+        performManualRefresh();
+      } else if (k === '?' || (k === '/' && e.shiftKey)) {
+        e.preventDefault();
+        showKeyboardHelp();
+      } else if (k === '1') { switchView('dashboard'); }
+      else if (k === '2') { switchView('deals'); }
+      else if (k === '3') { switchView('analytics'); }
+      else if (k === '4') { switchView('payoff'); }
+      else if (k === '5') { switchView('scenarios'); }
+      else if (k === '6') { switchView('alerts'); }
+      else if (k === '7') { switchView('settings'); }
+      else if (k === '/') {
+        var search = document.getElementById('search-deals');
+        if (search) { e.preventDefault(); search.focus(); }
+      }
+    });
+  }
+
+  function showKeyboardHelp() {
+    var existing = document.getElementById('kb-help-modal');
+    if (existing) { existing.remove(); return; }
+    var m = document.createElement('div');
+    m.id = 'kb-help-modal';
+    m.className = 'modal';
+    m.innerHTML = '<div class="modal-content">'
+      + '<div class="modal-header"><h2>Keyboard shortcuts</h2>'
+      + '<button class="modal-close" type="button" onclick="document.getElementById(\'kb-help-modal\').remove()" aria-label="Close dialog"><i class="fas fa-times"></i></button></div>'
+      + '<div class="modal-body"><table class="payoff-table"><tbody>'
+      + '<tr><td><kbd>N</kbd></td><td>New ELI deal</td></tr>'
+      + '<tr><td><kbd>R</kbd></td><td>Force-refresh prices</td></tr>'
+      + '<tr><td><kbd>1</kbd>…<kbd>7</kbd></td><td>Switch to view (Dashboard / Deals / Analytics / Payoff / Scenarios / Alerts / Settings)</td></tr>'
+      + '<tr><td><kbd>/</kbd></td><td>Focus search box</td></tr>'
+      + '<tr><td><kbd>?</kbd></td><td>This help</td></tr>'
+      + '<tr><td><kbd>Esc</kbd></td><td>Close modal / sidebar</td></tr>'
+      + '</tbody></table></div></div>';
+    document.body.appendChild(m);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1574,6 +2140,7 @@
     // Load settings + deals from localStorage
     HKELIApp.data.settings = getCurrentSettings();
     loadDealsIntoState();
+    refreshDealViews();
 
     renderDashboard();
     renderDeals();
