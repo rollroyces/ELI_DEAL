@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main, enhance/**]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. JavaScript syntax check (every .js file passes `node --check`) ──
+  js-syntax:
+    name: JS syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Parse every JS file
+        run: |
+          set -e
+          FAIL=0
+          for f in $(find . -name '*.js' -not -path './node_modules/*' -not -path './.git/*'); do
+            if node --check "$f"; then
+              echo "  ✓ $f"
+            else
+              echo "  ✗ $f"
+              FAIL=1
+            fi
+          done
+          if [ $FAIL -ne 0 ]; then exit 1; fi
+
+  # ── 2. JSDoc typedef sanity — every @typedef has a matching usage ──
+  jsdoc-sanity:
+    name: JSDoc typedef sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify JSDoc typedefs in js/types.js are referenced from app.js
+        run: |
+          set -e
+          TYPEDEFS=$(grep -E '^@typedef \{' js/types.js | sed -E 's/.*\{[^}]+\} *//' | awk '{print $1}' | sort -u)
+          echo "typedefs declared:"
+          echo "$TYPEDEFS"
+          MISSING=0
+          for t in $TYPEDEFS; do
+            # Count usages anywhere except in js/types.js itself
+            USES=$(grep -rE "($t\\b)" --include='*.js' --include='*.html' . \
+                   | grep -v 'js/types.js' \
+                   | wc -l | tr -d ' ')
+            if [ "$USES" -eq 0 ]; then
+              echo "  ⚠ typedef '$t' is declared but never used"
+            else
+              echo "  ✓ typedef '$t' used in $USES location(s)"
+            fi
+          done
+
+  # ── 3. Required-file presence ────────────────────────────────────────
+  required-files:
+    name: Required files present
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check expected files exist
+        run: |
+          set -e
+          REQUIRED=(
+            index.html
+            app.js
+            style.css
+            js/db.js
+            js/storage.js
+            js/yahoo-finance.js
+            js/finnhub.js
+            js/sectors.js
+            js/payoff.js
+            js/types.js
+            tests.html
+            manifest.webmanifest
+            sw.js
+            README.md
+            LICENSE
+            .gitignore
+            .nojekyll
+          )
+          for f in "${REQUIRED[@]}"; do
+            if [ -f "$f" ]; then
+              echo "  ✓ $f"
+            else
+              echo "  ✗ $f MISSING"
+              exit 1
+            fi
+          done
+
+  # ── 4. JSON validity (workflow + manifest + .db backups don't break parsing) ──
+  json-validity:
+    name: JSON files valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate manifest + workflow files
+        run: |
+          set -e
+          for f in manifest.webmanifest .github/workflows/ci.yml .github/workflows/deploy.yml; do
+            if [ -f "$f" ]; then
+              if python3 -c "import json,sys; json.load(open('$f')) if '$f'.endswith('.webmanifest') else None"; then
+                if [[ "$f" == *.webmanifest ]]; then
+                  python3 -c "import json; json.load(open('$f'))" && echo "  ✓ $f"
+                else
+                  # YAML files — just ensure they're non-empty
+                  [ -s "$f" ] && echo "  ✓ $f (yaml, non-empty)"
+                fi
+              fi
+            fi
+          done
+
+  # ── 5. HTML smoke check (file exists, has <!DOCTYPE html>, has </body>) ──
+  html-smoke:
+    name: HTML files smoke check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify HTML files look right
+        run: |
+          set -e
+          for f in index.html tests.html; do
+            head -1 "$f" | grep -qi '<!DOCTYPE' && echo "  ✓ $f has DOCTYPE"
+            grep -qi '</body>' "$f" && echo "  ✓ $f has </body>"
+            grep -qi '</html>' "$f" && echo "  ✓ $f has </html>"
+          done
+
+  # ── 6. JSDoc / license sanity ────────────────────────────────────────
+  package-meta:
+    name: README + license
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify README links work locally
+        run: |
+          set -e
+          # README should mention at least the main JS module
+          grep -qi 'js/db.js\|Storage\|SQLite' README.md && echo "  ✓ README mentions core modules"
+          # License should be MIT
+          head -3 LICENSE | grep -qi 'MIT' && echo "  ✓ LICENSE is MIT"

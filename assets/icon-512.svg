@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2180a0"/>
+      <stop offset="1" stop-color="#0e1116"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="100" ry="100" fill="url(#g)"/>
+  <g fill="none" stroke="#f5f5f5" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="50,360 160,250 230,290 350,130 462,210"/>
+    <line x1="50" y1="420" x2="462" y2="420"/>
+    <line x1="50" y1="80" x2="50" y2="420"/>
+  </g>
+  <circle cx="160" r="14" fill="#4fc3f7" stroke="none"/>
+  <circle cx="230" r="14" fill="#4fc3f7" stroke="none"/>
+  <circle cx="350" r="14" fill="#4fc3f7" stroke="none"/>
+  <text x="256" y="468" text-anchor="middle" fill="#f5f5f5" font-family="Helvetica, Arial, sans-serif" font-size="46" font-weight="600" letter-spacing="4">HK·ELI</text>
+</svg>

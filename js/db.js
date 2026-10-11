@@ -81,7 +81,16 @@
         'symbol TEXT PRIMARY KEY,' +
         'price REAL,' +
         'timestamp INTEGER' +
-      ');';
+      ');' +
+      'CREATE TABLE IF NOT EXISTS price_history (' +
+        'symbol TEXT NOT NULL,' +
+        'day_bucket TEXT NOT NULL,' +   // YYYY-MM-DD (HKT)
+        'price REAL NOT NULL,' +
+        'timestamp INTEGER NOT NULL,' +
+        'source TEXT,' +
+        'PRIMARY KEY (symbol, day_bucket)' +
+      ');' +
+      'CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol, timestamp DESC);';
 
   // ── sql.js loader (CDN, with graceful failure) ─────────────────────
   function loadSqlJs() {
@@ -243,10 +252,11 @@
           useOpfs = !!opfsRoot;
         } else {
           db = new SQLmod.Database();
-          db.run(SCHEMA);
           useOpfs = !!opfsRoot;
-          if (useOpfs) await flushToOpfs();
         }
+        // Idempotent schema apply — handles both fresh DBs and upgrades.
+        db.run(SCHEMA);
+        if (useOpfs) await flushToOpfs();
       } catch (e) {
         // sql.js failed — DB will be unusable; caller should fall back.
         lastError = e;
@@ -368,6 +378,102 @@
     try { db.run('DELETE FROM price_cache'); } catch (e) {}
   }
 
+  // ── Price history (one snapshot per symbol per HKT day) ─────────────
+  // Used by the max-drawdown + price-chart features. We bucket by
+  // day so a single deal-instinct refresh doesn't blow up the table.
+
+  function hktDayBucket(ts) {
+    // HKT = UTC+8. Convert the timestamp's local-day-bucket string.
+    var d = new Date(ts + 8 * 60 * 60 * 1000);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * Insert or update one row per (symbol, day_bucket). The most recent
+   * refresh of the day wins.
+   * @param {Object<string, number>} prices
+   * @param {string} [source='yahoo']
+   * @returns {Promise<number>}  Number of rows upserted.
+   */
+  async function recordSnapshots(prices, source) {
+    await init();
+    if (!db || !prices) return 0;
+    source = source || 'yahoo';
+    var ts = Date.now();
+    var day = hktDayBucket(ts);
+    var count = 0;
+    Object.keys(prices).forEach(function (sym) {
+      var p = prices[sym];
+      if (typeof p !== 'number' || !isFinite(p) || p <= 0) return;
+      try {
+        db.run(
+          'INSERT INTO price_history (symbol, day_bucket, price, timestamp, source) VALUES (?, ?, ?, ?, ?)' +
+          ' ON CONFLICT(symbol, day_bucket) DO UPDATE SET price = excluded.price, timestamp = excluded.timestamp, source = excluded.source',
+          [sym, day, p, ts, source]
+        );
+        count++;
+      } catch (e) { /* ignore per-row */ }
+    });
+    try { await flushToOpfs(); } catch (_) {}
+    return count;
+  }
+
+  /**
+   * Read price history for one or more symbols.
+   * @param {string|string[]} symbols
+   * @param {Object} [opts]
+   * @param {number} [opts.since]    epoch-ms lower bound
+   * @param {number} [opts.limit]    max rows per symbol (default 365)
+   * @returns {Promise<Object<string, Array<{price: number, timestamp: number, source: string}>>>}
+   */
+  async function getPriceHistory(symbols, opts) {
+    await init();
+    opts = opts || {};
+    if (!db) return {};
+    var list = Array.isArray(symbols) ? symbols : [symbols];
+    var since = typeof opts.since === 'number' ? opts.since : 0;
+    var limit = typeof opts.limit === 'number' ? opts.limit : 365;
+    var out = {};
+    list.forEach(function (sym) { out[sym] = []; });
+    try {
+      list.forEach(function (sym) {
+        var rows = db.exec(
+          'SELECT price, timestamp, source FROM price_history ' +
+          'WHERE symbol = ? AND timestamp >= ? ' +
+          'ORDER BY timestamp ASC LIMIT ?',
+          [sym, since, limit]
+        );
+        var values = (rows && rows[0] && rows[0].values) || [];
+        out[sym] = values.map(function (r) {
+          return { price: r[0], timestamp: r[1], source: r[2] };
+        });
+      });
+    } catch (e) { console.warn('getPriceHistory failed', e); }
+    return out;
+  }
+
+  /**
+   * Delete price_history rows older than `olderThanMs`.
+   * Default retention is from ELI_CONSTANTS.PRICE_HISTORY_RETENTION_MS
+   * (90 days). Returns number of rows deleted.
+   * @param {number} [olderThanMs]
+   * @returns {Promise<number>}
+   */
+  async function prunePriceHistory(olderThanMs) {
+    await init();
+    if (!db) return 0;
+    var cutoff = Date.now() - (typeof olderThanMs === 'number'
+      ? olderThanMs
+      : (global.ELI_CONSTANTS && global.ELI_CONSTANTS.PRICE_HISTORY_RETENTION_MS) || (90 * 24 * 60 * 60 * 1000));
+    try {
+      var before = db.exec('SELECT COUNT(*) FROM price_history')[0].values[0][0];
+      db.run('DELETE FROM price_history WHERE timestamp < ?', [cutoff]);
+      var after = db.exec('SELECT COUNT(*) FROM price_history')[0].values[0][0];
+      await flushToOpfs();
+      return before - after;
+    } catch (e) { return 0; }
+  }
+
   function status() {
     return {
       backend: !db ? 'failed' : (useOpfs ? 'opfs' : 'memory'),
@@ -389,6 +495,9 @@
     getCachedPrices: getCachedPrices,
     setCachedPrices: setCachedPrices,
     clearCachedPrices: clearCachedPrices,
+    recordSnapshots: recordSnapshots,
+    getPriceHistory: getPriceHistory,
+    prunePriceHistory: prunePriceHistory,
     status: status,
     schemaSQL: SCHEMA
   };

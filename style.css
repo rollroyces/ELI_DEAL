@@ -2414,3 +2414,199 @@ body.no-deals .notifications {
   visibility: hidden;
   pointer-events: none;
 }
+/* ──────────────────────────────────────────────────────────────────
+   Enhancements: theme toggle, settings tabs, payoff view, scenarios,
+   sector badges, drawdown rows, keyboard help.
+   ────────────────────────────────────────────────────────────────── */
+
+/* Theme toggle (icon button in the header). Inherits header button styles. */
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.theme-toggle:hover { background: var(--color-secondary-hover); border-color: var(--color-primary); }
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Settings tabs (collapse the four long cards into a tab strip) */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+.settings-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--color-text-secondary);
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  position: relative;
+  bottom: -1px;
+}
+.settings-tab:hover { color: var(--color-text); background: var(--color-secondary); }
+.settings-tab.active {
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+.settings-tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Payoff / Scenarios summary cards (re-uses .summary-card but adapts spacing) */
+.payoff-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+.payoff-summary-cards .summary-card {
+  margin-bottom: 0;
+}
+
+/* Payoff / scenario tables */
+.table-wrap { overflow-x: auto; }
+.payoff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.payoff-table th,
+.payoff-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.payoff-table thead th {
+  background: var(--color-surface);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  position: sticky;
+  top: 0;
+}
+.payoff-table tbody tr:hover { background: var(--color-secondary); }
+.payoff-table .positive { color: #4ade80; font-weight: 500; }
+.payoff-table .negative { color: #f87171; font-weight: 500; }
+.payoff-table .warning  { color: #facc15; font-weight: 500; }
+.payoff-table small { color: var(--color-text-secondary); font-size: 11px; }
+
+/* Sector / knock-in / par badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.badge-sector {
+  background: rgba(79, 195, 247, 0.12);
+  color: #4fc3f7;
+  border: 1px solid rgba(79, 195, 247, 0.3);
+}
+.badge-knockin {
+  background: rgba(248, 113, 113, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+.badge-par {
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+/* Per-deal max drawdown rows */
+.drawdown-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr 80px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.drawdown-row:last-child { border-bottom: none; }
+.drawdown-bar {
+  height: 8px;
+  background: var(--color-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.drawdown-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.drawdown-fill.positive { background: #4ade80; }
+.drawdown-fill.warning  { background: #facc15; }
+.drawdown-fill.negative { background: #f87171; }
+.drawdown-value { text-align: right; font-weight: 600; }
+.drawdown-deal strong { font-size: 14px; }
+
+/* Scenarios result block */
+#scenario-result .card { margin-bottom: 16px; }
+#scenario-result h3 { color: var(--color-primary); }
+
+/* Keyboard help modal */
+#kb-help-modal kbd {
+  display: inline-block;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: center;
+}
+#kb-help-modal .modal-content { max-width: 480px; }
+#kb-help-modal td { padding: 6px 12px; border-bottom: 1px solid var(--color-border); }
+
+/* Focus-visible for all interactive controls (a11y) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+/* Hide focus ring for mouse-only focus (Chromium / Firefox 88+) */
+:focus:not(:focus-visible) { outline: none; }
+
+/* Visually-hidden helper for screen-reader-only labels */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Subtle live-region for toasts and status messages */
+[role="status"] { font-style: normal; }
+
+/* Range slider thumb — make it visible in dark mode */
+input[type="range"] {
+  accent-color: var(--color-primary);
+  width: 100%;
+}
