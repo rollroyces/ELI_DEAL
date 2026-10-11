@@ -219,7 +219,9 @@
       }
     }
     return {
-      maxDrawdownPct: maxDd * 100,
+      // Conventional sign: negative for a loss (e.g. "-33.3%" means
+      // the price fell 33.3% from peak).
+      maxDrawdownPct: -maxDd * 100,
       peak: peakAfter,
       trough: trough,
       peakTs: peakAtMaxDd,

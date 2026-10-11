@@ -1120,12 +1120,13 @@
           }
         });
         if (!best) return '';
-        var ddPct = best.dd.maxDrawdownPct;
-        var klass = ddPct >= 30 ? 'negative' : ddPct >= 15 ? 'warning' : 'positive';
+        var ddPct = best.dd.maxDrawdownPct;            // negative = loss
+        var ddMag = Math.abs(ddPct);
+        var klass = ddMag >= 30 ? 'negative' : ddMag >= 15 ? 'warning' : 'positive';
         return '<div class="drawdown-row">'
           + '<div class="drawdown-deal"><strong>' + d.dealName + '</strong><br><small class="form-help">' + best.symbol + '</small></div>'
-          + '<div class="drawdown-bar"><div class="drawdown-fill ' + klass + '" style="width: ' + Math.min(100, Math.abs(ddPct) * 2) + '%"></div></div>'
-          + '<div class="drawdown-value ' + klass + '">' + ddPct.toFixed(1) + '%</div>'
+          + '<div class="drawdown-bar"><div class="drawdown-fill ' + klass + '" style="width: ' + Math.min(100, ddMag * 2) + '%"></div></div>'
+          + '<div class="drawdown-value ' + klass + '">' + (ddPct >= 0 ? '+' : '') + ddPct.toFixed(1) + '%</div>'
           + '</div>';
       }).join('');
       el.innerHTML = rows || '<p class="form-help">No history yet — prices recorded from every refresh will appear here.</p>';
