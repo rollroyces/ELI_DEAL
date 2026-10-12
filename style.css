@@ -2610,3 +2610,119 @@ input[type="range"] {
   accent-color: var(--color-primary);
   width: 100%;
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 5 additions: Portfolio Health card, Calendar view,
+   grade badges, calendar event rows.
+   ────────────────────────────────────────────────────────────────── */
+
+/* Portfolio Health card */
+#portfolio-health-card { margin-top: 24px; }
+#portfolio-health-card h3 { display: flex; align-items: center; gap: 12px; }
+.health-grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 16px;
+  background: var(--color-secondary);
+  color: var(--color-text);
+  margin-left: auto;
+}
+.health-grade.grade-A { background: #4ade80; color: #052e16; }
+.health-grade.grade-B { background: #84cc16; color: #1a2e05; }
+.health-grade.grade-C { background: #facc15; color: #422006; }
+.health-grade.grade-D { background: #fb923c; color: #431407; }
+.health-grade.grade-F { background: #f87171; color: #450a0a; }
+.health-total {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.health-bars { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.health-bar-row {
+  display: grid;
+  grid-template-columns: 90px 2fr 60px 1fr;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.health-bar-label { color: var(--color-text-secondary); font-weight: 500; }
+.health-bar {
+  height: 8px;
+  background: var(--color-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.health-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f87171 0%, #facc15 50%, #4ade80 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.health-bar-value { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.health-bar-detail { color: var(--color-text-secondary); font-size: 12px; }
+
+/* Calendar view */
+.calendar-controls { margin-bottom: 16px; }
+.calendar-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.calendar-stat {
+  background: var(--color-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.calendar-stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.calendar-stat span:last-child { font-size: 12px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.calendar-month {
+  margin: 24px 0;
+}
+.calendar-month h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 6px;
+}
+.calendar-event {
+  display: grid;
+  grid-template-columns: 100px 24px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.calendar-event.event-maturity { border-left-color: #4fc3f7; background: rgba(79, 195, 247, 0.05); }
+.calendar-event.event-coupon  { border-left-color: #4ade80; background: rgba(74, 222, 128, 0.05); }
+.calendar-event.event-alert   { border-left-color: #facc15; background: rgba(250, 204, 21, 0.05); }
+.calendar-event-date { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; font-size: 12px; }
+.calendar-event i { color: var(--color-text-secondary); }
+.calendar-event.event-maturity i { color: #4fc3f7; }
+.calendar-event.event-coupon i { color: #4ade80; }
+.calendar-event.event-alert i { color: #facc15; }
+.calendar-event-body strong { color: var(--color-text); }
+.calendar-event-body small { color: var(--color-text-secondary); }
+.calendar-event-amount { font-weight: 600; font-variant-numeric: tabular-nums; }

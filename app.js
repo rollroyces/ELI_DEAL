@@ -543,6 +543,9 @@
       else if (viewName === 'alerts') renderAlerts();
       else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); }
       else if (viewName === 'dashboard') renderDashboard();
+      else if (viewName === 'payoff') { populatePayoffDealSelect(); renderPayoffView(); }
+      else if (viewName === 'scenarios') renderScenariosView();
+      else if (viewName === 'calendar') renderCalendarView();
     }
   }
 
@@ -607,6 +610,7 @@
     // Hide the notification bell until the user has deals (no alerts to show).
     document.body.classList.toggle('no-deals', !hasDeals);
     renderQuickStats();
+    renderPortfolioHealth();
   }
 
   function renderQuickStats() {
@@ -627,6 +631,95 @@
       items[2].querySelector('.stat-value').textContent = avgCoupon;
       items[3].querySelector('.stat-value').textContent = multiStock + ' Deals';
     }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Portfolio Health card (Dashboard)
+  // ──────────────────────────────────────────────────────────────────
+  function renderPortfolioHealth() {
+    var gradeEl = document.getElementById('portfolio-health-grade');
+    var totalEl = document.getElementById('portfolio-health-total');
+    var barsEl = document.getElementById('portfolio-health-bars');
+    var detailEl = document.getElementById('portfolio-health-detail');
+    if (!gradeEl || !totalEl || !barsEl) return;
+    var deals = HKELIApp.data.eliDeals;
+    if (!deals.length) {
+      gradeEl.textContent = '—';
+      gradeEl.className = 'health-grade';
+      totalEl.textContent = '0/100';
+      barsEl.innerHTML = '<p class="form-help">Add a deal to see your portfolio health score.</p>';
+      return;
+    }
+    if (typeof Health === 'undefined') return;
+    var h = Health.portfolioHealth(deals);
+    gradeEl.textContent = h.grade;
+    gradeEl.className = 'health-grade grade-' + h.grade;
+    totalEl.textContent = h.total + '/100';
+    if (detailEl) detailEl.textContent = 'Health score = barrier safety + time to maturity + sector spread + issuer diversity.';
+    barsEl.innerHTML = Health.AXES.map(function (axis) {
+      var c = h[axis];
+      return '<div class="health-bar-row">'
+        + '<span class="health-bar-label">' + c.label + '</span>'
+        + '<div class="health-bar"><div class="health-bar-fill" style="width: ' + (c.score / 25 * 100) + '%"></div></div>'
+        + '<span class="health-bar-value">' + c.score + '/25</span>'
+        + '<span class="health-bar-detail">' + c.detail + '</span>'
+        + '</div>';
+    }).join('');
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Cash-Flow Calendar view
+  // ──────────────────────────────────────────────────────────────────
+  function renderCalendarView() {
+    var horizonEl = document.getElementById('calendar-horizon');
+    var statsEl = document.getElementById('calendar-summary-stats');
+    var timelineEl = document.getElementById('calendar-timeline');
+    var titleEl = document.getElementById('calendar-summary-title');
+    if (!timelineEl) return;
+    var days = horizonEl ? parseInt(horizonEl.value, 10) : 365;
+    var to = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+    var events = typeof Calendar !== 'undefined'
+      ? Calendar.buildEvents(HKELIApp.data.eliDeals, { to: to, alerts: HKELIApp.data.alerts })
+      : [];
+    var coupons = events.filter(function (e) { return e.type === 'coupon'; });
+    var maturities = events.filter(function (e) { return e.type === 'maturity'; });
+    var totalCash = events.reduce(function (s, e) { return s + (e.amountHkd || 0); }, 0);
+    if (titleEl) titleEl.textContent = 'Next ' + days + ' days';
+    if (statsEl) {
+      statsEl.innerHTML = ''
+        + '<div class="calendar-stat"><span class="calendar-stat-num">' + events.length + '</span><span>events</span></div>'
+        + '<div class="calendar-stat"><span class="calendar-stat-num">' + maturities.length + '</span><span>maturities</span></div>'
+        + '<div class="calendar-stat"><span class="calendar-stat-num">' + coupons.length + '</span><span>coupons</span></div>'
+        + '<div class="calendar-stat"><span class="calendar-stat-num">' + formatHKCurrency(totalCash) + '</span><span>total cash (HKD)</span></div>';
+    }
+    if (!events.length) {
+      timelineEl.innerHTML = '<div class="card"><div class="card__body"><p class="form-help">No events in this window. Add a deal with a maturity date to see coupons and maturities.</p></div></div>';
+      return;
+    }
+    var grouped = Calendar.groupByMonth(events);
+    var months = Object.keys(grouped).sort();
+    var html = months.map(function (m) {
+      var items = grouped[m].map(function (e) {
+        var icon, label, amount, klass;
+        if (e.type === 'coupon') { icon = 'fa-coins'; label = 'Coupon payment'; amount = formatHKCurrency(e.amountHkd); klass = 'event-coupon'; }
+        else if (e.type === 'maturity') { icon = 'fa-flag-checkered'; label = 'Maturity'; amount = formatHKCurrency(e.amountHkd); klass = 'event-maturity'; }
+        else { icon = 'fa-bell'; label = e.message || 'Price alert'; amount = e.symbol || ''; klass = 'event-alert'; }
+        return '<div class="calendar-event ' + klass + '">'
+          + '<span class="calendar-event-date">' + e.date + '</span>'
+          + '<i class="fas ' + icon + '"></i>'
+          + '<div class="calendar-event-body">'
+          + '<strong>' + label + '</strong> · ' + e.dealName
+          + (e.monthsAway != null ? ' <small>(' + e.monthsAway + 'mo)</small>' : '')
+          + '</div>'
+          + '<span class="calendar-event-amount">' + amount + '</span>'
+          + '</div>';
+      }).join('');
+      return '<div class="calendar-month">'
+        + '<h3>' + m + '</h3>'
+        + items
+        + '</div>';
+    }).join('');
+    timelineEl.innerHTML = html;
   }
 
   function updatePortfolioSummary() {
@@ -1468,6 +1561,19 @@
     }
   }
 
+  function setupCalendarEventListeners() {
+    var horizon = document.getElementById('calendar-horizon');
+    var refresh = document.getElementById('calendar-refresh');
+    if (horizon && !horizon.dataset.bound) {
+      horizon.dataset.bound = '1';
+      horizon.addEventListener('change', renderCalendarView);
+    }
+    if (refresh && !refresh.dataset.bound) {
+      refresh.dataset.bound = '1';
+      refresh.addEventListener('click', renderCalendarView);
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────
   // Scenarios view (uniform or worst-of stress test across portfolio)
   // ──────────────────────────────────────────────────────────────────
@@ -1978,6 +2084,7 @@
     });
 
     setupPayoffEventListeners();
+    setupCalendarEventListeners();
     setupThemeToggle();
     setupSettingsTabs();
     setupKeyboardShortcuts();
