@@ -92,6 +92,10 @@
                         <i class="fas fa-flask"></i>
                         <span>Scenarios</span>
                     </div>
+                    <div class="nav-item" data-view="calendar">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span>Calendar</span>
+                    </div>
                     <div class="nav-item" data-view="alerts">
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>Alerts & Notifications</span>
@@ -186,6 +190,17 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <div class="card" id="portfolio-health-card">
+                        <div class="card__body">
+                            <h3>Portfolio Health
+                                <span id="portfolio-health-grade" class="health-grade">—</span>
+                                <span id="portfolio-health-total" class="health-total">0/100</span>
+                            </h3>
+                            <p class="form-help" id="portfolio-health-detail">Health score = barrier safety + time to maturity + sector spread + issuer diversity. Higher is healthier.</p>
+                            <div id="portfolio-health-bars" class="health-bars"></div>
                         </div>
                     </div>
 
@@ -514,6 +529,44 @@
                             <div class="table-wrap"><table class="payoff-table" id="scenario-table"></table></div>
                         </div>
                     </div>
+                </div>
+
+                <!-- Calendar View -->
+                <div id="calendar-view" class="view">
+                    <div class="view-header">
+                        <h1>Cash-Flow Calendar</h1>
+                        <p>Upcoming coupon payments, maturities, and price alerts across your portfolio.</p>
+                    </div>
+
+                    <div class="calendar-controls card">
+                        <div class="card__body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="calendar-horizon">Time horizon</label>
+                                    <select class="form-control" id="calendar-horizon">
+                                        <option value="90">Next 90 days</option>
+                                        <option value="180">Next 6 months</option>
+                                        <option value="365" selected>Next 12 months</option>
+                                        <option value="730">Next 2 years</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="display:flex; align-items:flex-end;">
+                                    <button class="btn btn--primary" id="calendar-refresh" type="button">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card__body">
+                            <h3 id="calendar-summary-title">Upcoming Events</h3>
+                            <div id="calendar-summary-stats" class="calendar-stats"></div>
+                        </div>
+                    </div>
+
+                    <div id="calendar-timeline"></div>
                 </div>
 
                 <!-- Alerts View -->
@@ -898,17 +951,20 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=7 is a cache-bust so updates aren't held by the browser's
+         ?v=8 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=7"></script>
-    <script src="js/storage.js?v=7"></script>
-    <script src="js/yahoo-finance.js?v=7"></script>
-    <script src="js/finnhub.js?v=7"></script>
-    <script src="js/sectors.js?v=7"></script>
-    <script src="js/payoff.js?v=7"></script>
-    <script src="js/types.js?v=7"></script>
+    <script src="js/db.js?v=8"></script>
+    <script src="js/storage.js?v=8"></script>
+    <script src="js/yahoo-finance.js?v=8"></script>
+    <script src="js/finnhub.js?v=8"></script>
+    <script src="js/sectors.js?v=8"></script>
+    <script src="js/payoff.js?v=8"></script>
+    <script src="js/fx.js?v=8"></script>
+    <script src="js/health.js?v=8"></script>
+    <script src="js/calendar.js?v=8"></script>
+    <script src="js/types.js?v=8"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {
