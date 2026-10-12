@@ -529,6 +529,14 @@
                             <div class="table-wrap"><table class="payoff-table" id="scenario-table"></table></div>
                         </div>
                     </div>
+
+                    <div class="card">
+                        <div class="card__body">
+                            <h3>Stress-Test Heatmap</h3>
+                            <p class="form-help">Portfolio cash at maturity across a range of uniform shocks (rows) and "time the worst case happens" (columns). The diagonal approximates the worst-performer physical payoff. Hover a cell for details.</p>
+                            <div class="table-wrap"><table class="payoff-table heatmap-table" id="heatmap-table"></table></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Calendar View -->
@@ -649,10 +657,15 @@
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label">Currency Display</label>
-                                        <select class="form-control" id="currency-display">
-                                            <option value="hkd" selected>Hong Kong Dollar (HK$)</option>
-                                            <option value="usd">US Dollar (US$)</option>
+                                        <select class="form-control" id="currency-display" aria-label="Display currency">
+                                            <option value="HKD" selected>Hong Kong Dollar (HK$)</option>
+                                            <option value="USD">US Dollar (US$)</option>
+                                            <option value="CNY">Chinese Yuan (¥)</option>
+                                            <option value="EUR">Euro (€)</option>
+                                            <option value="JPY">Japanese Yen (¥)</option>
+                                            <option value="GBP">British Pound (£)</option>
                                         </select>
+                                        <small class="form-help" id="currency-display-help">All amounts displayed in the chosen currency. Rates from exchangerate.host, cached 6 h.</small>
                                     </div>
                                 </div>
                             </div>

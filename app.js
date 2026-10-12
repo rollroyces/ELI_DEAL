@@ -98,8 +98,64 @@
   // ──────────────────────────────────────────────────────────────────
   // Formatting / utility helpers (unchanged from original)
   // ──────────────────────────────────────────────────────────────────
-  function formatHKCurrency(amount) {
+  function formatCurrency(amount) {
     return 'HK$' + Math.round(amount).toLocaleString();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Multi-currency display
+  // Uses Fx.convert() with a cached rate; falls back to HKD on error.
+  // ──────────────────────────────────────────────────────────────────
+  var _displayRate = 1;            // HKD per display unit
+  var _displayCode = 'HKD';
+  var _displaySymbol = 'HK$';
+
+  function setDisplayCurrency(code) {
+    code = (code || 'HKD').toUpperCase();
+    var syms = { HKD: 'HK$', USD: 'US$', CNY: '¥', EUR: '€', JPY: '¥', GBP: '£' };
+    _displayCode = code;
+    _displaySymbol = syms[code] || code + ' ';
+    if (code === 'HKD') {
+      _displayRate = 1;
+      Storage.setSettings({ displayCurrency: 'HKD' });
+      refreshAllAmounts();
+      return;
+    }
+    if (window.Fx && typeof Fx.getRate === 'function') {
+      Fx.getRate(code).then(function (r) {
+        _displayRate = r.rate;
+        Storage.setSettings({ displayCurrency: code });
+        refreshAllAmounts();
+      }).catch(function () {
+        // Fallback already provided by Fx; just refresh.
+        refreshAllAmounts();
+      });
+    }
+  }
+
+  function formatCurrency(hkdAmount) {
+    if (typeof hkdAmount !== 'number' || !isFinite(hkdAmount)) return '—';
+    var v = hkdAmount * _displayRate;
+    // JPY and CNY typically displayed without fractional units.
+    var noDecimals = (_displayCode === 'JPY' || _displayCode === 'CNY');
+    var text = noDecimals
+      ? Math.round(v).toLocaleString()
+      : v.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    return _displaySymbol + text;
+  }
+
+  // Re-render every view that shows an amount. Lightweight: just calls
+  // the same render functions that fire when a deal is mutated.
+  function refreshAllAmounts() {
+    var s = getCurrentSettings();
+    _displayRate = (s.displayCurrency && s.displayCurrency !== 'HKD') ? _displayRate : 1;
+    // Update static dashboard elements
+    updatePortfolioSummary();
+    if (HKELIApp.currentView === 'deals') renderDeals();
+    else if (HKELIApp.currentView === 'analytics') setTimeout(setupCharts, 50);
+    else if (HKELIApp.currentView === 'payoff') renderPayoffView();
+    else if (HKELIApp.currentView === 'scenarios') renderScenariosView();
+    else if (HKELIApp.currentView === 'calendar') renderCalendarView();
   }
   function formatHKPrice(amount, decimals) {
     decimals = typeof decimals === 'number' ? decimals : 4;
@@ -690,7 +746,7 @@
         + '<div class="calendar-stat"><span class="calendar-stat-num">' + events.length + '</span><span>events</span></div>'
         + '<div class="calendar-stat"><span class="calendar-stat-num">' + maturities.length + '</span><span>maturities</span></div>'
         + '<div class="calendar-stat"><span class="calendar-stat-num">' + coupons.length + '</span><span>coupons</span></div>'
-        + '<div class="calendar-stat"><span class="calendar-stat-num">' + formatHKCurrency(totalCash) + '</span><span>total cash (HKD)</span></div>';
+        + '<div class="calendar-stat"><span class="calendar-stat-num">' + formatCurrency(totalCash) + '</span><span>total cash (HKD)</span></div>';
     }
     if (!events.length) {
       timelineEl.innerHTML = '<div class="card"><div class="card__body"><p class="form-help">No events in this window. Add a deal with a maturity date to see coupons and maturities.</p></div></div>';
@@ -701,8 +757,8 @@
     var html = months.map(function (m) {
       var items = grouped[m].map(function (e) {
         var icon, label, amount, klass;
-        if (e.type === 'coupon') { icon = 'fa-coins'; label = 'Coupon payment'; amount = formatHKCurrency(e.amountHkd); klass = 'event-coupon'; }
-        else if (e.type === 'maturity') { icon = 'fa-flag-checkered'; label = 'Maturity'; amount = formatHKCurrency(e.amountHkd); klass = 'event-maturity'; }
+        if (e.type === 'coupon') { icon = 'fa-coins'; label = 'Coupon payment'; amount = formatCurrency(e.amountHkd); klass = 'event-coupon'; }
+        else if (e.type === 'maturity') { icon = 'fa-flag-checkered'; label = 'Maturity'; amount = formatCurrency(e.amountHkd); klass = 'event-maturity'; }
         else { icon = 'fa-bell'; label = e.message || 'Price alert'; amount = e.symbol || ''; klass = 'event-alert'; }
         return '<div class="calendar-event ' + klass + '">'
           + '<span class="calendar-event-date">' + e.date + '</span>'
@@ -730,11 +786,11 @@
     var currentValueEl = document.getElementById('current-value');
     var totalPnlEl = document.getElementById('total-pnl');
     var activeDealsEl = document.getElementById('active-deals');
-    if (totalInvestmentEl) totalInvestmentEl.textContent = formatHKCurrency(totalInvestment);
-    if (currentValueEl) currentValueEl.textContent = formatHKCurrency(currentValue);
+    if (totalInvestmentEl) totalInvestmentEl.textContent = formatCurrency(totalInvestment);
+    if (currentValueEl) currentValueEl.textContent = formatCurrency(currentValue);
     if (totalPnlEl) {
       var pct = totalInvestment > 0 ? ((totalPnL / totalInvestment) * 100).toFixed(2) : '0.00';
-      totalPnlEl.textContent = (totalPnL >= 0 ? '+' : '') + formatHKCurrency(totalPnL);
+      totalPnlEl.textContent = (totalPnL >= 0 ? '+' : '') + formatCurrency(totalPnL);
       totalPnlEl.className = totalPnL >= 0 ? 'positive' : 'negative';
       var card = totalPnlEl.closest('.card-content');
       if (card) {
@@ -784,12 +840,25 @@
     var daysToMat = calculateDaysToMaturity(deal.maturityDate);
     var statusClass = getStatusClass(deal.status);
     var barrier = calculateBarrierDistance(deal);
+    // Per-deal health (0-100 + letter grade)
+    var healthBadge = '';
+    if (typeof Health !== 'undefined') {
+      var h = Health.computeHealth(deal, HKELIApp.data.eliDeals);
+      var shortDetail = h.barrierSafety.detail.split(' ')[0] === 'No' ? h.timeToMaturity.detail : h.barrierSafety.score;
+      healthBadge = '<span class="deal-health-badge grade-' + h.grade + '" title="Barrier: ' + h.barrierSafety.score
+        + '/25 · Maturity: ' + h.timeToMaturity.score + '/25 · Sectors: ' + h.sectorSpread.score + '/25 · Issuer: ' + h.issuerDiversity.score + '/25">'
+        + '<span class="deal-health-grade">' + h.grade + '</span>'
+        + '<span class="deal-health-score">' + h.total + '</span>'
+        + '</span>';
+    }
     return '<div class="deal-card" data-deal-id="' + deal.id + '">' +
       '<div class="deal-header"><div class="deal-header-left">' +
         '<div class="stock-count-badge"><i class="fas fa-layer-group"></i>' +
         deal.numberOfStocks + ' Stock' + (deal.numberOfStocks > 1 ? 's' : '') + '</div>' +
         '<div class="deal-title">' + deal.dealName + '</div>' +
-        '<div class="deal-id">' + deal.id + '</div></div>' +
+        '<div class="deal-id">' + deal.id + '</div>' +
+        healthBadge +
+      '</div>' +
       '<div class="deal-header-right">' +
         '<div class="deal-status ' + statusClass + '">' + deal.status + '</div>' +
         '<div class="deal-actions">' +
@@ -797,14 +866,14 @@
           '<button class="deal-action-btn delete" type="button" aria-label="Delete deal" title="Delete"><i class="fas fa-trash" aria-hidden="true"></i></button>' +
         '</div></div></div>' +
       '<div class="deal-pricing">' +
-        '<div class="pricing-row"><span class="pricing-label">Nominal Amount:</span><span class="pricing-value hk-currency">' + formatHKCurrency(deal.nominalAmount) + '</span></div>' +
-        '<div class="pricing-row"><span class="pricing-label">Purchase Price:</span><span class="pricing-value hk-currency">' + formatHKCurrency(deal.purchasePrice) + '</span></div>' +
+        '<div class="pricing-row"><span class="pricing-label">Nominal Amount:</span><span class="pricing-value hk-currency">' + formatCurrency(deal.nominalAmount) + '</span></div>' +
+        '<div class="pricing-row"><span class="pricing-label">Purchase Price:</span><span class="pricing-value hk-currency">' + formatCurrency(deal.purchasePrice) + '</span></div>' +
         '<div class="pricing-row"><span class="pricing-label">Coupon Rate:</span><span class="pricing-value yield-impact">' + deal.couponRate + '%</span></div>' +
       '</div>' +
       '<div class="deal-metrics">' +
-        '<div class="metric"><div class="metric-label">Current Value</div><div class="metric-value hk-currency">' + formatHKCurrency(deal.currentValue) + '</div></div>' +
+        '<div class="metric"><div class="metric-label">Current Value</div><div class="metric-value hk-currency">' + formatCurrency(deal.currentValue) + '</div></div>' +
         '<div class="metric"><div class="metric-label">P&L</div><div class="metric-value ' + ((deal.pnl || 0) >= 0 ? 'positive' : 'negative') + '">' +
-          ((deal.pnl || 0) >= 0 ? '+' : '') + formatHKCurrency(deal.pnl) + ' (' + pnlPct + '%)</div></div>' +
+          ((deal.pnl || 0) >= 0 ? '+' : '') + formatCurrency(deal.pnl) + ' (' + pnlPct + '%)</div></div>' +
         '<div class="metric"><div class="metric-label">Days to Maturity</div><div class="metric-value">' + (daysToMat > 0 ? daysToMat : 'Settled') + '</div></div>' +
         '<div class="metric"><div class="metric-label">Issuer</div><div class="metric-value">' + deal.issuer + '</div></div>' +
       '</div>' +
@@ -815,7 +884,7 @@
             '<div class="asset-info"><h4><span class="hk-stock-code">' + a.symbol + '</span>' + a.name +
               (deal.numberOfStocks > 1 ? '<span class="asset-weight">(' + (a.weight * 100).toFixed(1) + '%)</span>' : '') +
               '</h4><p>Strike: ' + formatHKPrice(a.strikePrice, 4) + ' | Barrier: ' + formatHKPrice(a.barrierLevel, 4) + '</p></div>' +
-            '<div class="price-info"><div class="current-price hk-currency">' + formatHKCurrency(a.currentPrice) + '</div>' +
+            '<div class="price-info"><div class="current-price hk-currency">' + formatCurrency(a.currentPrice) + '</div>' +
             '<div class="price-change ' + (change >= 0 ? 'positive' : 'negative') + '">' +
               (change >= 0 ? '+' : '') + change.toFixed(2) + '%</div></div></div>';
         }).join('') +
@@ -880,10 +949,10 @@
         detailRow('Issuer', deal.issuer) +
       '</div></div>' +
       '<div class="detail-section"><h3>Pricing</h3><div class="detail-list">' +
-        detailRow('Nominal Amount', formatHKCurrency(deal.nominalAmount), 'hk-currency') +
-        detailRow('Purchase Price', formatHKCurrency(deal.purchasePrice), 'hk-currency') +
-        detailRow('Current Value', formatHKCurrency(deal.currentValue), 'hk-currency') +
-        detailRow('P&L', (deal.pnl >= 0 ? '+' : '') + formatHKCurrency(deal.pnl), deal.pnl >= 0 ? 'positive' : 'negative') +
+        detailRow('Nominal Amount', formatCurrency(deal.nominalAmount), 'hk-currency') +
+        detailRow('Purchase Price', formatCurrency(deal.purchasePrice), 'hk-currency') +
+        detailRow('Current Value', formatCurrency(deal.currentValue), 'hk-currency') +
+        detailRow('P&L', (deal.pnl >= 0 ? '+' : '') + formatCurrency(deal.pnl), deal.pnl >= 0 ? 'positive' : 'negative') +
       '</div></div></div>';
     var c = document.getElementById('deal-detail-content');
     if (c) c.innerHTML = html;
@@ -1420,10 +1489,10 @@
     var totalEl = document.getElementById('payoff-total');
     var knockinEl = document.getElementById('payoff-knockin');
     var worstEl = document.getElementById('payoff-worst');
-    if (cashEl) cashEl.textContent = formatHKCurrency(proj.cashPayoff);
-    if (coupEl) coupEl.textContent = formatHKCurrency(proj.coupon);
+    if (cashEl) cashEl.textContent = formatCurrency(proj.cashPayoff);
+    if (coupEl) coupEl.textContent = formatCurrency(proj.coupon);
     if (totalEl) {
-      totalEl.textContent = (proj.totalReturn >= 0 ? '+' : '') + formatHKCurrency(proj.totalReturn)
+      totalEl.textContent = (proj.totalReturn >= 0 ? '+' : '') + formatCurrency(proj.totalReturn)
         + ' (' + (proj.totalReturnPct * 100).toFixed(2) + '%)';
       totalEl.className = proj.totalReturn >= 0 ? 'positive' : 'negative';
     }
@@ -1626,10 +1695,10 @@
         var pnlClass = proj.totalReturn >= 0 ? 'positive' : 'negative';
         return '<tr>'
           + '<td><strong>' + deal.dealName + '</strong><br><small class="form-help">' + deal.id + '</small></td>'
-          + '<td>' + formatHKCurrency(deal.currentValue) + '</td>'
+          + '<td>' + formatCurrency(deal.currentValue) + '</td>'
           + '<td>' + (proj.knockInTriggered ? '<span class="badge badge-knockin">Knock-in</span>' : '<span class="badge badge-par">Par</span>') + '</td>'
-          + '<td>' + formatHKCurrency(proj.cashPayoff) + '</td>'
-          + '<td class="' + pnlClass + '">' + (proj.totalReturn >= 0 ? '+' : '') + formatHKCurrency(proj.totalReturn)
+          + '<td>' + formatCurrency(proj.cashPayoff) + '</td>'
+          + '<td class="' + pnlClass + '">' + (proj.totalReturn >= 0 ? '+' : '') + formatCurrency(proj.totalReturn)
           + '<br><small>' + (proj.totalReturnPct * 100).toFixed(2) + '%</small></td>'
           + '<td>' + proj.worstSymbol + '<br><small>(' + (proj.worstReturnPct * 100).toFixed(2) + '%)</small></td>'
           + '</tr>';
@@ -1642,11 +1711,11 @@
       tbl.innerHTML = '<thead>' + header + '</thead><tbody>' + rows
         + '<tr style="font-weight:600; border-top:2px solid var(--color-border);">'
         + '<td>Total</td>'
-        + '<td>' + formatHKCurrency(totals.before) + '</td>'
+        + '<td>' + formatCurrency(totals.before) + '</td>'
         + '<td>' + totals.knockIn + ' knock-ins</td>'
-        + '<td>' + formatHKCurrency(totals.after) + '</td>'
+        + '<td>' + formatCurrency(totals.after) + '</td>'
         + '<td class="' + (totPnl >= 0 ? 'positive' : 'negative') + '">'
-        + (totPnl >= 0 ? '+' : '') + formatHKCurrency(totPnl)
+        + (totPnl >= 0 ? '+' : '') + formatCurrency(totPnl)
         + '<br><small>' + totPct.toFixed(2) + '%</small></td>'
         + '<td>—</td>'
         + '</tr></tbody>';
@@ -1658,10 +1727,60 @@
           ? 'Every underlying dropped/gained ' + label + '.'
           : 'Only the current worst performer dropped/gained ' + label + '.';
         resultEl.innerHTML = '<div class="card"><div class="card__body"><h3>Scenario: ' + desc + '</h3>'
-          + '<p>Portfolio cash at maturity: <strong>' + formatHKCurrency(totals.after)
-          + '</strong> (currently ' + formatHKCurrency(totals.before) + ').</p></div></div>';
+          + '<p>Portfolio cash at maturity: <strong>' + formatCurrency(totals.after)
+          + '</strong> (currently ' + formatCurrency(totals.before) + ').</p></div></div>';
       }
     }
+
+    renderHeatmapTable();
+  }
+
+  // Stress-test heatmap: portfolio cash at maturity across (shock, months-left).
+  function renderHeatmapTable() {
+    var tbl = document.getElementById('heatmap-table');
+    if (!tbl || typeof Payoff === 'undefined') return;
+    var deals = HKELIApp.data.eliDeals;
+    if (!deals.length) { tbl.innerHTML = '<tr><td>Add deals to see the stress-test heatmap.</td></tr>'; return; }
+    var shocks = [-0.50, -0.40, -0.30, -0.20, -0.10, 0, 0.20];
+    var horizons = [3, 6, 12, 24, 36];
+    var portfolioCurrent = deals.reduce(function (s, d) { return s + (d.currentValue || 0); }, 0);
+    var html = '<thead><tr><th>Shock \\ Months left</th>';
+    horizons.forEach(function (m) { html += '<th>' + m + 'mo</th>'; });
+    html += '</tr></thead><tbody>';
+    shocks.forEach(function (shock) {
+      html += '<tr><th>' + (shock * 100).toFixed(0) + '%</th>';
+      horizons.forEach(function (m) {
+        var totalPayoff = 0;
+        var knockInCount = 0;
+        deals.forEach(function (d) {
+          var clone = JSON.parse(JSON.stringify(d));
+          (clone.underlyingAssets || []).forEach(function (a) {
+            a.hypotheticalPrice = (a.currentPrice || a.strikePrice) * (1 + shock);
+          });
+          var proj = Payoff.projectPayoff(clone);
+          // Coupon earned over the shortened term (assume quarterly payments)
+          var couponTotal = (d.nominalAmount || 0) * (d.couponRate || 0) / 100 * (m / 12);
+          totalPayoff += proj.cashPayoff + couponTotal;
+          if (proj.knockInTriggered) knockInCount++;
+        });
+        var delta = totalPayoff - portfolioCurrent;
+        var pct = (delta / Math.max(portfolioCurrent, 1)) * 100;
+        // Color gradient: deeper red for bigger losses, deeper green for gains
+        var intensity = Math.min(1, Math.abs(pct) / 30);
+        var bg = delta >= 0
+          ? 'rgba(74,222,128,' + (0.10 + intensity * 0.40) + ')'
+          : 'rgba(248,113,113,' + (0.10 + intensity * 0.40) + ')';
+        var title = 'Shock ' + (shock*100).toFixed(0) + '% at ' + m + 'mo → cash ' + formatCurrency(totalPayoff)
+          + ' (' + (delta >= 0 ? '+' : '') + pct.toFixed(1) + '%, ' + knockInCount + ' knock-ins)';
+        html += '<td style="background:' + bg + '" title="' + title + '">'
+          + '<strong>' + formatCurrency(totalPayoff) + '</strong>'
+          + '<br><small>' + (delta >= 0 ? '+' : '') + pct.toFixed(1) + '%</small>'
+          + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    tbl.innerHTML = html;
 
     if (slider && !slider.dataset.boundRun) {
       slider.dataset.boundRun = '1';
@@ -2017,6 +2136,10 @@
     on('save-to-db', 'click', function (e) { e.preventDefault(); saveDealsToDatabase(); });
     on('load-from-db', 'click', function (e) { e.preventDefault(); loadDealsFromDatabase(); });
     on('save-settings', 'click', function (e) { e.preventDefault(); applySettings(); });
+    on('currency-display', 'change', function (e) {
+      e.preventDefault();
+      setDisplayCurrency(e.target.value);
+    });
 
     // Test price source
     on('test-price-source', 'click', function (e) { e.preventDefault(); testPriceSource(); });
@@ -2256,6 +2379,11 @@
     updateNotificationBadge();
     updateRefreshDisplay();
     populateSettingsUI();
+    // Initialize display currency from saved settings (if non-HKD, fetch rate)
+    var initialCur = (HKELIApp.data.settings && HKELIApp.data.settings.displayCurrency) || 'HKD';
+    var curSel = document.getElementById('currency-display');
+    if (curSel) curSel.value = initialCur;
+    setDisplayCurrency(initialCur);
     updateDbStatusIndicator();
     // Refresh DB indicator after async SQLite init completes
     if (window.Storage && Storage.dbStatus) {

@@ -2726,3 +2726,59 @@ input[type="range"] {
 .calendar-event-body strong { color: var(--color-text); }
 .calendar-event-body small { color: var(--color-text-secondary); }
 .calendar-event-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 6 additions: per-deal health badge, stress-test heatmap,
+   currency display hint.
+   ────────────────────────────────────────────────────────────────── */
+
+/* Per-deal health badge in the deal card */
+.deal-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #052e16;
+  cursor: help;
+  border: 1px solid transparent;
+  vertical-align: middle;
+}
+.deal-health-grade {
+  font-size: 13px;
+  letter-spacing: 0.3px;
+}
+.deal-health-score {
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.deal-health-badge.grade-A { background: #4ade80; border-color: #16a34a; }
+.deal-health-badge.grade-B { background: #84cc16; border-color: #4d7c0f; }
+.deal-health-badge.grade-C { background: #facc15; border-color: #ca8a04; }
+.deal-health-badge.grade-D { background: #fb923c; border-color: #c2410c; }
+.deal-health-badge.grade-F { background: #f87171; border-color: #b91c1c; }
+
+/* Stress-test heatmap */
+.heatmap-table {
+  font-size: 12px;
+  text-align: center;
+}
+.heatmap-table th, .heatmap-table td {
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+.heatmap-table thead th { background: var(--color-surface); }
+.heatmap-table tbody th {
+  background: var(--color-secondary);
+  font-weight: 600;
+}
+.heatmap-table tbody td small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  opacity: 0.8;
+}
