@@ -602,6 +602,8 @@
       else if (viewName === 'payoff') { populatePayoffDealSelect(); renderPayoffView(); }
       else if (viewName === 'scenarios') renderScenariosView();
       else if (viewName === 'calendar') renderCalendarView();
+      else if (viewName === 'watchlist') renderWatchlistView();
+      else if (viewName === 'compare') renderCompareView();
     }
   }
 
@@ -807,6 +809,7 @@
   function renderDeals() {
     var dealsGrid = document.getElementById('deals-grid');
     if (!dealsGrid) return;
+    refreshTagFilter();
     HKELIApp.filteredDeals = HKELIApp.data.eliDeals.slice();
     if (HKELIApp.filteredDeals.length === 0) {
       dealsGrid.innerHTML = '<div class="card"><div class="card__body"><h3>No deals found</h3><p>Click "Add New HK ELI Deal" to get started.</p></div></div>';
@@ -894,7 +897,21 @@
         '<div class="barrier-bar"><div class="barrier-fill ' + barrier.class + '" style="width: ' + barrier.percentage + '%"></div></div>' +
         '<span class="barrier-text">' + barrier.percentage.toFixed(0) + '%</span>' +
       '</div>' +
+      renderTagChips(deal.tags) +
     '</div>';
+  }
+
+  function renderTagChips(tags) {
+    if (!tags || !tags.length) return '';
+    return '<div class="deal-tags">' + tags.map(function (t) {
+      return '<span class="deal-tag">#' + escapeHtml(t) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
   }
 
   function calculatePriceChange(asset) {
@@ -983,10 +1000,20 @@
       var el = form.querySelector('[name="' + n + '"]');
       if (el) el.value = deal[n];
     });
+    var tagsEl = form.querySelector('[name="tags"]');
+    if (tagsEl) tagsEl.value = (deal.tags || []).join(', ');
     setTimeout(function () {
       updateStockConfiguration();
       setTimeout(function () { populateStockInputsFromDeal(deal); }, 50);
     }, 100);
+  }
+
+  // Parse a comma-separated tag string into a deduped, lowercased, trimmed array.
+  function parseTagsInput(s) {
+    if (!s) return [];
+    return s.split(',').map(function (t) { return t.trim().toLowerCase(); })
+      .filter(function (t) { return t.length > 0 && t.length <= 32; })
+      .filter(function (t, i, arr) { return arr.indexOf(t) === i; });
   }
   function populateStockInputsFromDeal(deal) {
     if (!deal || !Array.isArray(deal.underlyingAssets)) return;
@@ -1132,7 +1159,8 @@
       status: 'Active',
       underlyingAssets: assets,
       currentValue: parseFloat(form.purchasePrice.value),
-      pnl: 0
+      pnl: 0,
+      tags: parseTagsInput(form.tags ? form.tags.value : '')
     };
     if (editId) {
       Storage.updateDeal(editId, payload);
@@ -1796,6 +1824,165 @@
     }
     run();
   }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Watchlist view
+  // ──────────────────────────────────────────────────────────────────
+  function renderWatchlistView() {
+    var sel = document.getElementById('watch-symbol');
+    if (sel && sel.options.length <= 1) {
+      // Populate from the hard-coded HK stock catalog.
+      var opts = '<option value="">— pick a stock —</option>';
+      (HKELIApp.data.hkStocks || []).forEach(function (s) {
+        opts += '<option value="' + s.symbol + '">' + s.symbol + ' — ' + s.name + '</option>';
+      });
+      sel.innerHTML = opts;
+    }
+    var list = typeof Watchlist !== 'undefined' ? Watchlist.list() : [];
+    var container = document.getElementById('watchlist-table');
+    var titleEl = document.getElementById('watchlist-count-title');
+    if (titleEl) titleEl.textContent = 'Tracked stocks (' + list.length + ')';
+    if (!container) return;
+    if (!list.length) {
+      container.innerHTML = '<p class="form-help">No stocks tracked yet. Add one above to monitor entry opportunities.</p>';
+      return;
+    }
+    // Look up live price for each watch entry.
+    var rows = list.map(function (e) {
+      var live = null;
+      (HKELIApp.data.eliDeals || []).forEach(function (d) {
+        (d.underlyingAssets || []).forEach(function (a) {
+          if (a.symbol === e.symbol) live = a.currentPrice;
+        });
+      });
+      var dist = (typeof e.targetEntry === 'number' && live) ? ((e.targetEntry - live) / live * 100) : null;
+      return '<tr>'
+        + '<td><strong>' + e.symbol + '</strong></td>'
+        + '<td>' + formatCurrency(live) + (live ? ' <small class="form-help">live</small>' : ' <small class="form-help">—</small>') + '</td>'
+        + '<td>' + (typeof e.targetEntry === 'number' ? formatCurrency(e.targetEntry) : '<span class="form-help">—</span>') + '</td>'
+        + '<td>' + (dist == null ? '<span class="form-help">—</span>' : (dist >= 0 ? '+' : '') + dist.toFixed(1) + '% to target') + '</td>'
+        + '<td>' + escapeHtml(e.note || '') + '</td>'
+        + '<td><button class="watch-remove-btn" data-symbol="' + e.symbol + '" type="button" aria-label="Remove"><i class="fas fa-trash"></i></button></td>'
+        + '</tr>';
+    }).join('');
+    container.innerHTML = '<div class="table-wrap"><table class="payoff-table">'
+      + '<thead><tr><th>Symbol</th><th>Current</th><th>Target</th><th>Distance</th><th>Note</th><th></th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table></div>';
+    // Wire remove buttons
+    container.querySelectorAll('.watch-remove-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (typeof Watchlist !== 'undefined') {
+          Watchlist.remove(btn.dataset.symbol);
+          renderWatchlistView();
+        }
+      });
+    });
+  }
+
+  function setupWatchlistListeners() {
+    var addBtn = document.getElementById('watch-add-btn');
+    if (addBtn && !addBtn.dataset.bound) {
+      addBtn.dataset.bound = '1';
+      addBtn.addEventListener('click', function () {
+        var sym = document.getElementById('watch-symbol').value;
+        if (!sym) { showToast('Pick a stock first', 'warning'); return; }
+        var target = parseFloat(document.getElementById('watch-target').value);
+        var note = document.getElementById('watch-note').value;
+        if (typeof Watchlist !== 'undefined') {
+          Watchlist.add({ symbol: sym, targetEntry: isNaN(target) ? null : target, note: note });
+          showToast(sym + ' added to watchlist', 'success');
+          document.getElementById('watch-target').value = '';
+          document.getElementById('watch-note').value = '';
+          renderWatchlistView();
+        }
+      });
+    }
+  }
+
+  function setupCompareListeners() {
+    var a = document.getElementById('compare-deal-a');
+    var b = document.getElementById('compare-deal-b');
+    if (a && !a.dataset.bound) {
+      a.dataset.bound = '1';
+      a.addEventListener('change', renderCompareView);
+    }
+    if (b && !b.dataset.bound) {
+      b.dataset.bound = '1';
+      b.addEventListener('change', renderCompareView);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Compare view (side-by-side two-deal comparison)
+  // ──────────────────────────────────────────────────────────────────
+  function populateCompareDealSelects() {
+    var a = document.getElementById('compare-deal-a');
+    var b = document.getElementById('compare-deal-b');
+    if (!a || !b) return;
+    // Idempotent: only rebuild if the option list is stale (missing deals).
+    if (a.dataset.populatedFor === String(HKELIApp.data.eliDeals.length) &&
+        b.dataset.populatedFor === String(HKELIApp.data.eliDeals.length)) {
+      return;
+    }
+    var opts = '<option value="">— pick a deal —</option>'
+      + HKELIApp.data.eliDeals.map(function (d) {
+          return '<option value="' + d.id + '">' + d.dealName + ' (' + d.id + ')</option>';
+        }).join('');
+    a.innerHTML = opts;
+    b.innerHTML = opts;
+    a.dataset.populatedFor = String(HKELIApp.data.eliDeals.length);
+    b.dataset.populatedFor = String(HKELIApp.data.eliDeals.length);
+  }
+
+  function renderCompareView() {
+    populateCompareDealSelects();
+    var a = document.getElementById('compare-deal-a');
+    var b = document.getElementById('compare-deal-b');
+    var out = document.getElementById('compare-result');
+    if (!out) return;
+    var idA = a && a.value, idB = b && b.value;
+    if (!idA || !idB) {
+      out.innerHTML = '<div class="card"><div class="card__body"><p class="form-help">Pick two deals above to see a side-by-side comparison.</p></div></div>';
+      return;
+    }
+    var dealA = HKELIApp.data.eliDeals.find(function (d) { return d.id === idA; });
+    var dealB = HKELIApp.data.eliDeals.find(function (d) { return d.id === idB; });
+    if (!dealA || !dealB) { out.innerHTML = '<p>One of the deals was not found.</p>'; return; }
+    var hA = Health.computeHealth(dealA, HKELIApp.data.eliDeals);
+    var hB = Health.computeHealth(dealB, HKELIApp.data.eliDeals);
+    var pA = Payoff.projectPayoff(dealA);
+    var pB = Payoff.projectPayoff(dealB);
+    var better = (hA.total === hB.total) ? null : (hA.total > hB.total ? 'A' : 'B');
+    function row(label, va, vb, fmt) {
+      fmt = fmt || function (v) { return v; };
+      var betterMark = (better === 'A' && va > vb) ? ' <span class="badge badge-par">better</span>'
+                    : (better === 'B' && vb > va) ? ' <span class="badge badge-par">better</span>'
+                    : '';
+      return '<tr><td>' + label + '</td>'
+        + '<td class="' + (better === 'A' && va > vb ? 'positive' : '') + '">' + fmt(va) + betterMark + '</td>'
+        + '<td class="' + (better === 'B' && vb > va ? 'positive' : '') + '">' + fmt(vb) + (betterMark ? '' : '') + '</td></tr>';
+    }
+    out.innerHTML = '<div class="card"><div class="card__body">'
+      + '<h3>Comparison</h3>'
+      + '<div class="table-wrap"><table class="payoff-table">'
+      + '<thead><tr><th></th><th>Deal A: ' + escapeHtml(dealA.dealName) + '</th><th>Deal B: ' + escapeHtml(dealB.dealName) + '</th></tr></thead>'
+      + '<tbody>'
+      + row('Health (0-100)', hA.total, hB.total, function (v) { return v + ' (' + v.toFixed(0) + ')'; })
+      + row('Health grade', hA.grade, hB.grade)
+      + row('Current value', dealA.currentValue, dealB.currentValue, formatCurrency)
+      + row('Purchase price', dealA.purchasePrice, dealB.purchasePrice, formatCurrency)
+      + row('P&L', dealA.pnl, dealB.pnl, function (v) { return (v >= 0 ? '+' : '') + formatCurrency(v); })
+      + row('Coupon rate', dealA.couponRate, dealB.couponRate, function (v) { return v + '%'; })
+      + row('Issuer', escapeHtml(dealA.issuer), escapeHtml(dealB.issuer), function (v) { return v; })
+      + row('Settlement', escapeHtml(dealA.settlementMethod), escapeHtml(dealB.settlementMethod), function (v) { return v; })
+      + row('Knock-in at current?', pA.knockInTriggered ? 'Yes' : 'No', pB.knockInTriggered ? 'Yes' : 'No')
+      + row('Payoff if settles now', pA.cashPayoff, pB.cashPayoff, formatCurrency)
+      + row('Worst performer', pA.worstSymbol, pB.worstSymbol)
+      + row('Worst return vs strike', pA.worstReturnPct, pB.worstReturnPct, function (v) { return (v * 100).toFixed(1) + '%'; })
+      + '</tbody></table></div>'
+      + '</div></div>';
+  }
+
   function updateNotificationBadge() {
     var badge = document.getElementById('notification-count');
     if (badge) badge.textContent = HKELIApp.data.alerts.length;
@@ -1828,23 +2015,44 @@
     var status = document.getElementById('status-filter');
     var cnt = document.getElementById('stock-count-filter');
     var iss = document.getElementById('issuer-filter');
+    var tag = document.getElementById('tag-filter');
     var search = document.getElementById('search-deals');
     var sv = status ? status.value : '';
     var cv = cnt ? cnt.value : '';
     var iv = iss ? iss.value : '';
+    var tv = tag ? tag.value : '';
     var xv = search ? search.value.toLowerCase() : '';
     HKELIApp.filteredDeals = HKELIApp.data.eliDeals.filter(function (deal) {
       var okS = !sv || deal.status === sv;
       var okC = !cv || String(deal.numberOfStocks) === cv;
       var okI = !iv || deal.issuer === iv;
+      var okT = !tv || (deal.tags || []).indexOf(tv) !== -1;
       var okX = !xv || deal.dealName.toLowerCase().includes(xv) ||
         (deal.id || '').toLowerCase().includes(xv) ||
         (deal.underlyingAssets || []).some(function (a) {
           return a.symbol.toLowerCase().includes(xv) || (a.name || '').toLowerCase().includes(xv);
-        });
-      return okS && okC && okI && okX;
+        }) ||
+        (deal.tags || []).some(function (t) { return t.toLowerCase().includes(xv); });
+      return okS && okC && okI && okT && okX;
     });
     renderDeals();
+  }
+
+  // Populate the tag filter with all unique tags currently in use.
+  function refreshTagFilter() {
+    var sel = document.getElementById('tag-filter');
+    if (!sel) return;
+    var current = sel.value;
+    var allTags = {};
+    HKELIApp.data.eliDeals.forEach(function (d) {
+      (d.tags || []).forEach(function (t) { allTags[t] = true; });
+    });
+    var sorted = Object.keys(allTags).sort();
+    sel.innerHTML = '<option value="">All Tags</option>' +
+      sorted.map(function (t) {
+        var sel2 = t === current ? ' selected' : '';
+        return '<option value="' + escapeHtml(t) + '"' + sel2 + '>#' + escapeHtml(t) + '</option>';
+      }).join('');
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -2184,7 +2392,7 @@
     }
     on('clear-data-btn', 'click', function (e) { e.preventDefault(); clearAllData(); });
 
-    ['status-filter', 'stock-count-filter', 'issuer-filter'].forEach(function (id) {
+    ['status-filter', 'stock-count-filter', 'issuer-filter', 'tag-filter'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.addEventListener('change', applyFilters);
     });
@@ -2208,6 +2416,8 @@
 
     setupPayoffEventListeners();
     setupCalendarEventListeners();
+    setupWatchlistListeners();
+    setupCompareListeners();
     setupThemeToggle();
     setupSettingsTabs();
     setupKeyboardShortcuts();
