@@ -96,6 +96,14 @@
                         <i class="fas fa-calendar-alt"></i>
                         <span>Calendar</span>
                     </div>
+                    <div class="nav-item" data-view="watchlist">
+                        <i class="fas fa-eye"></i>
+                        <span>Watchlist</span>
+                    </div>
+                    <div class="nav-item" data-view="compare">
+                        <i class="fas fa-columns"></i>
+                        <span>Compare</span>
+                    </div>
                     <div class="nav-item" data-view="alerts">
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>Alerts & Notifications</span>
@@ -264,6 +272,11 @@
                                 <option value="JPMorgan Chase">JPMorgan Chase</option>
                                 <option value="Deutsche Bank">Deutsche Bank</option>
                                 <option value="Credit Suisse">Credit Suisse</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <select class="form-control" id="tag-filter" aria-label="Filter by tag">
+                                <option value="">All Tags</option>
                             </select>
                         </div>
                         <div class="filter-group">
@@ -575,6 +588,77 @@
                     </div>
 
                     <div id="calendar-timeline"></div>
+                </div>
+
+                <!-- Watchlist View -->
+                <div id="watchlist-view" class="view">
+                    <div class="view-header">
+                        <h1>Watchlist</h1>
+                        <p>Track HK stocks you're watching for an ELI entry. Set a target entry price and add a note.</p>
+                    </div>
+
+                    <div class="watchlist-add card">
+                        <div class="card__body">
+                            <h3>Add a stock</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="watch-symbol">Symbol</label>
+                                    <select class="form-control" id="watch-symbol">
+                                        <option value="">— pick a stock —</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="watch-target">Target entry (HK$)</label>
+                                    <input type="number" class="form-control" id="watch-target" step="0.01" placeholder="optional">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="watch-note">Note</label>
+                                    <input type="text" class="form-control" id="watch-note" placeholder="optional">
+                                </div>
+                                <div class="form-group" style="display:flex; align-items:flex-end;">
+                                    <button class="btn btn--primary" id="watch-add-btn" type="button">
+                                        <i class="fas fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card__body">
+                            <h3 id="watchlist-count-title">Tracked stocks</h3>
+                            <div id="watchlist-table"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Compare View -->
+                <div id="compare-view" class="view">
+                    <div class="view-header">
+                        <h1>Compare Deals</h1>
+                        <p>Side-by-side comparison of any two deals — payoff, risk, current value, and health.</p>
+                    </div>
+
+                    <div class="compare-controls card">
+                        <div class="card__body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="compare-deal-a">Deal A</label>
+                                    <select class="form-control" id="compare-deal-a">
+                                        <option value="">— pick a deal —</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="compare-deal-b">Deal B</label>
+                                    <select class="form-control" id="compare-deal-b">
+                                        <option value="">— pick a deal —</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="compare-result"></div>
                 </div>
 
                 <!-- Alerts View -->
@@ -897,6 +981,14 @@
                                 </select>
                             </div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="deal-tags-input">Tags (comma-separated)</label>
+                                <input type="text" class="form-control" name="tags" id="deal-tags-input"
+                                       placeholder="e.g. tech-heavy, income, speculative">
+                                <small class="form-help">Used to organize and filter deals.</small>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-section" id="stocks-configuration">
@@ -964,20 +1056,21 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=8 is a cache-bust so updates aren't held by the browser's
+         ?v=9 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=8"></script>
-    <script src="js/storage.js?v=8"></script>
-    <script src="js/yahoo-finance.js?v=8"></script>
-    <script src="js/finnhub.js?v=8"></script>
-    <script src="js/sectors.js?v=8"></script>
-    <script src="js/payoff.js?v=8"></script>
-    <script src="js/fx.js?v=8"></script>
-    <script src="js/health.js?v=8"></script>
-    <script src="js/calendar.js?v=8"></script>
-    <script src="js/types.js?v=8"></script>
+    <script src="js/db.js?v=9"></script>
+    <script src="js/storage.js?v=9"></script>
+    <script src="js/yahoo-finance.js?v=9"></script>
+    <script src="js/finnhub.js?v=9"></script>
+    <script src="js/sectors.js?v=9"></script>
+    <script src="js/payoff.js?v=9"></script>
+    <script src="js/fx.js?v=9"></script>
+    <script src="js/health.js?v=9"></script>
+    <script src="js/calendar.js?v=9"></script>
+    <script src="js/watchlist.js?v=9"></script>
+    <script src="js/types.js?v=9"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=9"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {
