@@ -203,8 +203,8 @@
   // ──────────────────────────────────────────────────────────────────
   // Price cache TTLs (tunable)
   // ──────────────────────────────────────────────────────────────────
-  var CACHE_FRESH_MS = 30 * 60 * 1000;     // 30 min — call this "fresh", skip API
-  var CACHE_SOFT_MAX_MS = 24 * 60 * 60 * 1000; // 24 h — show it, but flag as stale
+  var CACHE_FRESH_MS = 2 * 60 * 60 * 1000;     // 2 h — call this "fresh", skip API
+  var CACHE_STALE_MS = 8 * 60 * 60 * 1000;     // 8 h — show but warn, try API
 
   function describeAge(ageMs) {
     if (ageMs == null) return 'never';
@@ -284,8 +284,9 @@
       }
 
       var failed = symbols.filter(function (s) { return prices[s] == null; });
+      var sourceStats = { yahoo: freshFromCache, finnhub: 0, manual: 0, missing: failed.length };
 
-      // Step 4: Finnhub fallback for any remaining symbols
+      // Step 4: Finnhub fallback for any remaining symbols (requires user API key)
       var finnhubFilled = {};
       if (failed.length && window.Finnhub && Finnhub.hasKey()) {
         console.log('Yahoo missed', failed.length, 'symbols; trying Finnhub…');
@@ -295,6 +296,7 @@
             if (p != null) {
               prices[failed[i]] = p;
               finnhubFilled[failed[i]] = p;
+              sourceStats.finnhub++;
               failed.splice(i, 1);
               i--;
             }
@@ -306,6 +308,7 @@
           });
         }
       }
+      sourceStats.missing = failed.length;
 
       // Step 5: Apply prices + recompute deal metrics
       var updated = 0, missing = 0;
@@ -336,9 +339,18 @@
       HKELIApp.data.apiStatus.connected = updated > 0 || freshFromCache > 0;
       HKELIApp.data.apiStatus.lastSuccessfulRefresh = now;
       HKELIApp.data.apiStatus.lastError = failed.length ? (failed.length + ' symbols unavailable') : null;
-      HKELIApp.data.apiStatus.source = updated > 0
-        ? (source === 'finnhub' ? 'finnhub' : 'yahoo')
+      // Pick a primary source label for the connection indicator.
+      var primarySource = updated > 0
+        ? (sourceStats.finnhub > 0 ? 'finnhub' : 'yahoo')
         : (freshFromCache > 0 ? 'cache' : 'none');
+      HKELIApp.data.apiStatus.source = primarySource;
+      HKELIApp.data.apiStatus.sourceStats = {
+        yahoo: sourceStats.yahoo + updated,
+        finnhub: sourceStats.finnhub,
+        manual: sourceStats.manual,
+        cache: freshFromCache,
+        missing: sourceStats.missing
+      };
       HKELIApp.data.settings.lastRefresh = now;
       Storage.setSettings({ lastRefresh: now });
 
@@ -390,12 +402,19 @@
     var dot = document.getElementById('api-status-dot');
     var txt = document.getElementById('api-status-text');
     var last = document.getElementById('last-update');
+    var stats = HKELIApp.data.apiStatus.sourceStats;
     if (dot && txt) {
       if (HKELIApp.data.apiStatus.connected) {
         dot.className = 'status-dot success';
-        txt.textContent = HKELIApp.data.apiStatus.source === 'finnhub'
-          ? 'Connected (Finnhub)'
-          : 'Connected (Yahoo)';
+        var sourceLabel = {
+          yahoo: 'Yahoo',
+          finnhub: 'Finnhub',
+          cache: 'cache',
+          none: 'cached data'
+        }[HKELIApp.data.apiStatus.source] || 'Yahoo';
+        var breakdown = stats ? ' (' + (stats.yahoo + stats.stooq + stats.finnhub) + ' fresh' +
+          (stats.missing > 0 ? ', ' + stats.missing + ' missing' : '') + ')' : '';
+        txt.textContent = 'Connected (' + sourceLabel + ')' + breakdown;
       } else {
         dot.className = 'status-dot error';
         txt.textContent = 'Offline (showing fallback prices)';
@@ -525,6 +544,7 @@
       populatePayoffDealSelect();
       renderPayoffView();
     } else if (HKELIApp.currentView === 'scenarios') renderScenariosView();
+    else if (HKELIApp.currentView === 'settings') renderManualPriceEntries();
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -597,7 +617,7 @@
       if (viewName === 'analytics') setTimeout(setupCharts, 100);
       else if (viewName === 'deals') renderDeals();
       else if (viewName === 'alerts') renderAlerts();
-      else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); }
+      else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); renderManualPriceEntries(); }
       else if (viewName === 'dashboard') renderDashboard();
       else if (viewName === 'payoff') { populatePayoffDealSelect(); renderPayoffView(); }
       else if (viewName === 'scenarios') renderScenariosView();
@@ -2273,6 +2293,105 @@
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Manual price entry (Settings → Manual Price Entry)
+  // Lets the user paste prices from any external source when the
+  // live APIs are blocked. The manual prices are applied as a single
+  // batch to all deals and persisted via Db.recordSnapshots.
+  // ──────────────────────────────────────────────────────────────────
+  function uniqueSymbolsFromDeals() {
+    var seen = {};
+    var out = [];
+    (HKELIApp.data.eliDeals || []).forEach(function (d) {
+      (d.underlyingAssets || []).forEach(function (a) {
+        if (a.symbol && !seen[a.symbol]) {
+          seen[a.symbol] = true;
+          out.push({ symbol: a.symbol, name: a.name || a.symbol, currentPrice: a.currentPrice });
+        }
+      });
+    });
+    out.sort(function (a, b) { return a.symbol.localeCompare(b.symbol); });
+    return out;
+  }
+
+  function renderManualPriceEntries() {
+    var container = document.getElementById('manual-price-entries');
+    if (!container) return;
+    var symbols = uniqueSymbolsFromDeals();
+    if (!symbols.length) {
+      container.innerHTML = '<p class="form-help">No deals yet — add a deal first, then come back to enter prices manually.</p>';
+      return;
+    }
+    var rows = symbols.map(function (s) {
+      return '<div class="manual-price-row">'
+        + '<span class="manual-price-symbol"><strong>' + s.symbol + '</strong> <small>' + escapeHtml(s.name) + '</small></span>'
+        + '<input type="number" step="0.01" min="0" class="form-control manual-price-input" data-symbol="' + s.symbol + '" placeholder="' + (s.currentPrice || '') + '">'
+        + '</div>';
+    }).join('');
+    container.innerHTML = rows;
+  }
+
+  function applyManualPrices() {
+    var inputs = document.querySelectorAll('.manual-price-input');
+    var prices = {};
+    inputs.forEach(function (inp) {
+      var v = parseFloat(inp.value);
+      if (isFinite(v) && v > 0) {
+        prices[inp.dataset.symbol] = v;
+      }
+    });
+    var symbols = Object.keys(prices);
+    if (!symbols.length) { showToast('No prices entered', 'warning'); return; }
+    // Apply to all deals
+    var updated = 0;
+    HKELIApp.data.eliDeals.forEach(function (deal) {
+      (deal.underlyingAssets || []).forEach(function (a) {
+        if (typeof prices[a.symbol] === 'number') {
+          a.currentPrice = prices[a.symbol];
+          updated++;
+        }
+      });
+      deal.currentValue = (deal.underlyingAssets || []).reduce(function (sum, a) {
+        var effShares = (deal.purchasePrice || 0) / (a.strikePrice || 1);
+        return sum + (a.currentPrice || 0) * effShares * (a.weight || 0);
+      }, 0);
+      deal.pnl = (deal.currentValue || 0) - (deal.purchasePrice || 0);
+      updateDealStatus(deal);
+    });
+    persistDeals();
+    // Persist to price history as a 'manual' source
+    if (typeof Db.recordSnapshots === 'function') {
+      Db.recordSnapshots(prices, 'manual').catch(function (e) {
+        console.warn('recordSnapshots (manual) failed', e);
+      });
+    }
+    // Update apiStatus so the UI shows manual counts
+    var now = Date.now();
+    HKELIApp.data.apiStatus.connected = true;
+    HKELIApp.data.apiStatus.lastSuccessfulRefresh = now;
+    HKELIApp.data.apiStatus.source = 'manual';
+    HKELIApp.data.apiStatus.sourceStats = {
+      yahoo: 0, finnhub: 0, manual: symbols.length, cache: 0, missing: 0
+    };
+    HKELIApp.data.settings.lastRefresh = now;
+    Storage.setSettings({ lastRefresh: now });
+    renderDashboard();
+    if (HKELIApp.currentView === 'deals') renderDeals();
+    if (HKELIApp.currentView === 'analytics') setupCharts();
+    if (HKELIApp.currentView === 'payoff') renderPayoffView();
+    if (HKELIApp.currentView === 'scenarios') renderScenariosView();
+    if (HKELIApp.currentView === 'calendar') renderCalendarView();
+    updateAPIStatus();
+    showToast('Applied ' + symbols.length + ' manual prices', 'success');
+  }
+
+  function clearManualPrices() {
+    // Clear all manual inputs, then trigger a real API refresh
+    document.querySelectorAll('.manual-price-input').forEach(function (inp) { inp.value = ''; });
+    showToast('Cleared manual prices — refreshing from API', 'info');
+    setTimeout(function () { performManualRefresh(); }, 300);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Mobile sidebar (hamburger) toggle
   // ──────────────────────────────────────────────────────────────────
   function setSidebarOpen(open) {
@@ -2351,6 +2470,8 @@
 
     // Test price source
     on('test-price-source', 'click', function (e) { e.preventDefault(); testPriceSource(); });
+    on('apply-manual-prices', 'click', function (e) { e.preventDefault(); applyManualPrices(); });
+    on('clear-manual-prices', 'click', function (e) { e.preventDefault(); clearManualPrices(); });
     on('dismiss-price-banner', 'click', function (e) {
       e.preventDefault();
       var b = document.getElementById('price-source-banner');
