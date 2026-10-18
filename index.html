@@ -885,6 +885,22 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="card">
+                                <div class="card__body">
+                                    <h3>Manual Price Entry</h3>
+                                    <p class="form-help">If Yahoo / Finnhub are rate-limited or blocked, paste the latest prices here and the app will use them. Useful for keeping the portfolio current when you're on the road or behind a strict firewall.</p>
+                                    <div id="manual-price-entries"></div>
+                                    <div class="form-actions" style="margin-top: 12px;">
+                                        <button class="btn btn--primary" id="apply-manual-prices" type="button">
+                                            <i class="fas fa-check"></i> Apply manual prices
+                                        </button>
+                                        <button class="btn btn--secondary" id="clear-manual-prices" type="button" style="margin-left: 8px;">
+                                            <i class="fas fa-undo"></i> Reset to API
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1056,21 +1072,21 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=9 is a cache-bust so updates aren't held by the browser's
+         ?v=10 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=9"></script>
-    <script src="js/storage.js?v=9"></script>
-    <script src="js/yahoo-finance.js?v=9"></script>
-    <script src="js/finnhub.js?v=9"></script>
-    <script src="js/sectors.js?v=9"></script>
-    <script src="js/payoff.js?v=9"></script>
-    <script src="js/fx.js?v=9"></script>
-    <script src="js/health.js?v=9"></script>
-    <script src="js/calendar.js?v=9"></script>
-    <script src="js/watchlist.js?v=9"></script>
-    <script src="js/types.js?v=9"></script>
+    <script src="js/db.js?v=10"></script>
+    <script src="js/storage.js?v=10"></script>
+    <script src="js/yahoo-finance.js?v=10"></script>
+    <script src="js/finnhub.js?v=10"></script>
+    <script src="js/sectors.js?v=10"></script>
+    <script src="js/payoff.js?v=10"></script>
+    <script src="js/fx.js?v=10"></script>
+    <script src="js/health.js?v=10"></script>
+    <script src="js/calendar.js?v=10"></script>
+    <script src="js/watchlist.js?v=10"></script>
+    <script src="js/types.js?v=10"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=10"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {

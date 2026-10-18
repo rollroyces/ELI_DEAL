@@ -2821,3 +2821,28 @@ input[type="range"] {
 
 /* Compare */
 .compare-controls { margin-bottom: 16px; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 8 addition: Manual Price Entry rows in Settings.
+   ────────────────────────────────────────────────────────────────── */
+.manual-price-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.manual-price-row:last-child { border-bottom: none; }
+.manual-price-symbol strong {
+  font-family: var(--font-family-mono);
+  color: var(--color-text);
+  margin-right: 8px;
+}
+.manual-price-symbol small {
+  color: var(--color-text-secondary);
+}
+.manual-price-input {
+  font-family: var(--font-family-mono);
+  text-align: right;
+}
