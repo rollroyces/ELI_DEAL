@@ -2783,6 +2783,14 @@ input[type="range"] {
   opacity: 0.8;
 }
 
+/* Empty state inside the heatmap table cell needs tighter spacing. */
+.heatmap-table .empty-state {
+  padding: 4px;
+}
+.heatmap-table .empty-state h3 { font-size: 14px; margin: 2px 0 4px; }
+.heatmap-table .empty-state p { margin: 0; }
+.heatmap-table .empty-illustration { max-width: 260px; }
+
 /* ──────────────────────────────────────────────────────────────────
    Theme 7 additions: deal tags, watchlist, compare view.
    ────────────────────────────────────────────────────────────────── */
@@ -2845,4 +2853,68 @@ input[type="range"] {
 .manual-price-input {
   font-family: var(--font-family-mono);
   text-align: right;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 9 addition: empty-state illustrations.
+   Mid-tone SVGs sit on their own so they read identically in both
+   light and dark themes without per-theme variants.
+   ────────────────────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 16px 4px;
+}
+
+.empty-illustration {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: 0 auto 4px;
+  opacity: 0.9;
+  /* Inline SVGs inherit currentColor for their neutral strokes, so a
+     soft filter keeps the palette consistent across themes. */
+  color: var(--color-text);
+  pointer-events: none;
+  user-select: none;
+}
+
+.empty-state h3 {
+  margin: 4px 0 6px;
+  font-size: 16px;
+  color: var(--color-text);
+}
+
+.empty-state p {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  max-width: 46ch;
+}
+
+.empty-state p strong {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* Slightly larger art on wide screens, smaller on phones. */
+@media (min-width: 900px) {
+  .empty-illustration { max-width: 360px; }
+}
+@media (max-width: 560px) {
+  .empty-illustration { max-width: 240px; }
+  .empty-state { padding: 4px 8px 0; }
+}
+
+/* README hero */
+.hero-banner {
+  display: block;
+  width: 100%;
+  max-width: 880px;
+  height: auto;
+  margin: 0 0 20px;
+  border-radius: 14px;
 }

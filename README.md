@@ -1,3 +1,13 @@
+<p align="center">
+  <img src="assets/illustrations/hero.svg" alt="HK ELI Portfolio Manager dashboard: candlestick charts with knock-in barriers, a portfolio health gauge, sector allocation, and a cash-flow calendar" width="880">
+</p>
+
+<p align="center">
+  <strong>Live HK prices</strong> · worst-performer payoff · barrier risk · cash-flow calendar · multi-currency
+</p>
+
+---
+
 # HK ELI Portfolio Manager — GitHub Pages Edition
 
 An interactive web app for managing Hong Kong Equity-Linked Investment (ELI)

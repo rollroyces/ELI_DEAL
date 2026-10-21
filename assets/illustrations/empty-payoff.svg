@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200" role="img" aria-hidden="true">
+  <title>No payoff projection yet</title>
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- three basket underlyings descending, worst one highlighted -->
+    <g stroke-width="2.5">
+      <!-- best performer -->
+      <path d="M46 40 L122 62" stroke="#4ade80" stroke-opacity="0.45"/>
+      <circle cx="46" cy="40" r="5" fill="#4ade80" fill-opacity="0.5" stroke="none"/>
+      <circle cx="122" cy="62" r="4" fill="#4ade80" fill-opacity="0.4" stroke="none"/>
+
+      <!-- middle -->
+      <path d="M46 66 L122 96" stroke="#facc15" stroke-opacity="0.45"/>
+      <circle cx="46" cy="66" r="5" fill="#facc15" fill-opacity="0.5" stroke="none"/>
+      <circle cx="122" cy="96" r="4" fill="#facc15" fill-opacity="0.4" stroke="none"/>
+
+      <!-- worst performer (the one that settles the ELI) -->
+      <path d="M46 92 L122 140" stroke="#f87171" stroke-opacity="0.8"/>
+      <circle cx="46" cy="92" r="5" fill="#f87171" fill-opacity="0.6" stroke="none"/>
+      <circle cx="122" cy="140" r="6" fill="#f87171" fill-opacity="0.7" stroke="none"/>
+      <circle cx="122" cy="140" r="12" fill="none" stroke="#f87171" stroke-opacity="0.3" stroke-width="2"/>
+    </g>
+
+    <!-- strike reference line -->
+    <path d="M46 46 H122" stroke="currentColor" stroke-opacity="0.15" stroke-width="2" stroke-dasharray="3 5"/>
+
+    <!-- worst-performer callout: funnel narrowing to the red point -->
+    <path d="M132 52 C176 52 196 108 214 140" stroke="currentColor" stroke-opacity="0.16" stroke-width="2" stroke-dasharray="4 6"/>
+    <path d="M132 78 C168 78 188 118 208 140" stroke="currentColor" stroke-opacity="0.16" stroke-width="2" stroke-dasharray="4 6"/>
+    <path d="M132 104 C160 104 180 128 202 140" stroke="currentColor" stroke-opacity="0.16" stroke-width="2" stroke-dasharray="4 6"/>
+
+    <!-- worst-of badge -->
+    <g transform="translate(244 140)">
+      <circle r="26" fill="#f87171" fill-opacity="0.12" stroke="#f87171" stroke-opacity="0.6" stroke-width="2"/>
+      <path d="M0 -13 L12 -6 V2 C12 9 6 14 0 17 C-6 14 -12 9 -12 2 V-6 Z"
+            fill="#f87171" fill-opacity="0.2" stroke="#f87171" stroke-opacity="0.85" stroke-width="2"/>
+    </g>
+
+    <!-- axis -->
+    <path d="M36 172 H296" stroke="currentColor" stroke-opacity="0.14" stroke-width="2"/>
+  </g>
+</svg>

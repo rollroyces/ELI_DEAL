@@ -771,7 +771,11 @@
         + '<div class="calendar-stat"><span class="calendar-stat-num">' + formatCurrency(totalCash) + '</span><span>total cash (HKD)</span></div>';
     }
     if (!events.length) {
-      timelineEl.innerHTML = '<div class="card"><div class="card__body"><p class="form-help">No events in this window. Add a deal with a maturity date to see coupons and maturities.</p></div></div>';
+      timelineEl.innerHTML = '<div class="card"><div class="card__body">' +
+        emptyState('empty-calendar', 'No events in this window',
+          'Add a deal with a maturity date to see upcoming coupons and maturities.',
+          'A cash-flow timeline with coupon nodes and a maturity flag') +
+        '</div></div>';
       return;
     }
     var grouped = Calendar.groupByMonth(events);
@@ -832,7 +836,11 @@
     refreshTagFilter();
     HKELIApp.filteredDeals = HKELIApp.data.eliDeals.slice();
     if (HKELIApp.filteredDeals.length === 0) {
-      dealsGrid.innerHTML = '<div class="card"><div class="card__body"><h3>No deals found</h3><p>Click "Add New HK ELI Deal" to get started.</p></div></div>';
+      dealsGrid.innerHTML = '<div class="card"><div class="card__body">' +
+        emptyState('empty-deals', 'No deals yet',
+          'Click <strong>Add New HK ELI Deal</strong> to start tracking barrier risk and live prices.',
+          'Candlestick chart breaking through a dashed barrier line') +
+        '</div></div>';
       return;
     }
     dealsGrid.innerHTML = HKELIApp.filteredDeals.map(createDealCard).join('');
@@ -926,6 +934,24 @@
     return '<div class="deal-tags">' + tags.map(function (t) {
       return '<span class="deal-tag">#' + escapeHtml(t) + '</span>';
     }).join('') + '</div>';
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Empty-state illustrations
+  // Renders an inline <img> pointing at assets/illustrations/<name>.svg
+  // so empty states stay visually consistent and need no JS drawing.
+  // ──────────────────────────────────────────────────────────────────
+  function illustration(name, alt) {
+    return '<img class="empty-illustration" src="assets/illustrations/' + name +
+      '.svg" alt="' + escapeHtml(alt || '') + '" loading="lazy" decoding="async">';
+  }
+
+  function emptyState(name, title, message, alt) {
+    return '<div class="empty-state">'
+      + illustration(name, alt || title)
+      + '<h3>' + escapeHtml(title) + '</h3>'
+      + '<p>' + message + '</p>'
+      + '</div>';
   }
 
   function escapeHtml(s) {
@@ -1472,7 +1498,11 @@
     var list = document.getElementById('alerts-list');
     if (!list) return;
     if (!HKELIApp.data.alerts.length) {
-      list.innerHTML = '<div class="card"><div class="card__body"><h3>No alerts</h3><p>All clear. Add ELI deals to start monitoring barrier and maturity risks.</p></div></div>';
+      list.innerHTML = '<div class="card"><div class="card__body">' +
+        emptyState('empty-alerts', 'All clear',
+          'No alerts. Add ELI deals to start monitoring barrier and maturity risks.',
+          'A calm bell with a checkmark') +
+        '</div></div>';
       return;
     }
     list.innerHTML = HKELIApp.data.alerts.map(function (a) {
@@ -1788,7 +1818,14 @@
     var tbl = document.getElementById('heatmap-table');
     if (!tbl || typeof Payoff === 'undefined') return;
     var deals = HKELIApp.data.eliDeals;
-    if (!deals.length) { tbl.innerHTML = '<tr><td>Add deals to see the stress-test heatmap.</td></tr>'; return; }
+    if (!deals.length) {
+      tbl.innerHTML = '<tr><td>' +
+        emptyState('empty-scenarios', 'No deals to stress-test',
+          'Add an ELI deal to see how the portfolio settles across shock levels and time horizons.',
+          'A heatmap grid grading from red losses to green gains') +
+        '</td></tr>';
+      return;
+    }
     var shocks = [-0.50, -0.40, -0.30, -0.20, -0.10, 0, 0.20];
     var horizons = [3, 6, 12, 24, 36];
     var portfolioCurrent = deals.reduce(function (s, d) { return s + (d.currentValue || 0); }, 0);
@@ -1864,7 +1901,9 @@
     if (titleEl) titleEl.textContent = 'Tracked stocks (' + list.length + ')';
     if (!container) return;
     if (!list.length) {
-      container.innerHTML = '<p class="form-help">No stocks tracked yet. Add one above to monitor entry opportunities.</p>';
+      container.innerHTML = emptyState('empty-watchlist', 'No stocks tracked yet',
+        'Add one above to monitor entry opportunities.',
+        'An eye over a stock ticker row');
       return;
     }
     // Look up live price for each watch entry.
@@ -1962,7 +2001,11 @@
     if (!out) return;
     var idA = a && a.value, idB = b && b.value;
     if (!idA || !idB) {
-      out.innerHTML = '<div class="card"><div class="card__body"><p class="form-help">Pick two deals above to see a side-by-side comparison.</p></div></div>';
+      out.innerHTML = '<div class="card"><div class="card__body">' +
+        emptyState('empty-compare', 'Pick two deals to compare',
+          'Choose a deal above for both A and B to see a side-by-side comparison.',
+          'Two panels side by side, one marked better') +
+        '</div></div>';
       return;
     }
     var dealA = HKELIApp.data.eliDeals.find(function (d) { return d.id === idA; });

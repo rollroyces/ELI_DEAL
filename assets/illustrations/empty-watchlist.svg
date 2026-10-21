@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200" role="img" aria-hidden="true">
+  <title>Watchlist is empty</title>
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- eye outline -->
+    <path d="M42 100 C42 100 78 56 160 56 C242 56 278 100 278 100 C278 100 242 144 160 144 C78 144 42 100 42 100 Z"
+          fill="#4fc3f7" fill-opacity="0.08" stroke="#4fc3f7" stroke-opacity="0.55" stroke-width="2.5"/>
+    <!-- iris -->
+    <circle cx="160" cy="100" r="27" fill="#4fc3f7" fill-opacity="0.16" stroke="#4fc3f7" stroke-opacity="0.8" stroke-width="2.5"/>
+    <circle cx="160" cy="100" r="10" fill="#4fc3f7" fill-opacity="0.6" stroke="none"/>
+    <circle cx="168" cy="92" r="3.5" fill="currentColor" fill-opacity="0.5" stroke="none"/>
+
+    <!-- ticker rows behind the eye, hinting at "tracking" -->
+    <g stroke-width="2" opacity="0.4">
+      <path d="M18 168 H96" stroke="#4ade80" stroke-opacity="0.5"/>
+      <circle cx="88" cy="168" r="4" fill="#4ade80" fill-opacity="0.5" stroke="none"/>
+      <path d="M224 168 H302" stroke="#f87171" stroke-opacity="0.45"/>
+      <path d="M262 164 L272 172 M272 164 L262 172" stroke="#f87171" stroke-opacity="0.5"/>
+    </g>
+
+    <!-- small candle marks flanking -->
+    <g stroke-width="1.8" opacity="0.45">
+      <path d="M18 62 V48" stroke="#4ade80" stroke-opacity="0.5"/>
+      <rect x="13" y="53" width="10" height="8" rx="2" fill="#4ade80" fill-opacity="0.28" stroke="#4ade80" stroke-opacity="0.6"/>
+      <path d="M300 60 V46" stroke="#f87171" stroke-opacity="0.5"/>
+      <rect x="295" y="50" width="10" height="10" rx="2" fill="#f87171" fill-opacity="0.25" stroke="#f87171" stroke-opacity="0.6"/>
+    </g>
+  </g>
+</svg>

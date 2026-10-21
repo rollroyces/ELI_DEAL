@@ -78,6 +78,10 @@ jobs:
             js/finnhub.js
             js/sectors.js
             js/payoff.js
+            js/fx.js
+            js/health.js
+            js/calendar.js
+            js/watchlist.js
             js/types.js
             tests.html
             manifest.webmanifest
@@ -92,6 +96,21 @@ jobs:
               echo "  ✓ $f"
             else
               echo "  ✗ $f MISSING"
+              exit 1
+            fi
+          done
+
+          # Every empty-state illustration the app references must exist,
+          # otherwise a view silently renders a broken image.
+          echo ""
+          echo "illustration assets:"
+          for a in empty-deals empty-payoff empty-scenarios empty-calendar \
+                   empty-watchlist empty-compare empty-alerts hero; do
+            if [ -f "assets/illustrations/$a.svg" ]; then
+              python3 -c "import xml.etree.ElementTree as ET; ET.parse('assets/illustrations/$a.svg')" \
+                && echo "  ✓ assets/illustrations/$a.svg"
+            else
+              echo "  ✗ assets/illustrations/$a.svg MISSING"
               exit 1
             fi
           done
