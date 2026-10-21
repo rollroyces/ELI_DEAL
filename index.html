@@ -429,6 +429,8 @@
 
                     <div id="payoff-empty" class="card">
                         <div class="card__body">
+                            <img class="empty-illustration" src="assets/illustrations/empty-payoff.svg"
+                                 alt="Three basket underlyings converging on the worst performer" loading="lazy" decoding="async">
                             <h3>No deal selected</h3>
                             <p>Pick a deal above to see its worst-performer payoff projection.</p>
                         </div>
@@ -1072,21 +1074,21 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=10 is a cache-bust so updates aren't held by the browser's
+         ?v=11 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=10"></script>
-    <script src="js/storage.js?v=10"></script>
-    <script src="js/yahoo-finance.js?v=10"></script>
-    <script src="js/finnhub.js?v=10"></script>
-    <script src="js/sectors.js?v=10"></script>
-    <script src="js/payoff.js?v=10"></script>
-    <script src="js/fx.js?v=10"></script>
-    <script src="js/health.js?v=10"></script>
-    <script src="js/calendar.js?v=10"></script>
-    <script src="js/watchlist.js?v=10"></script>
-    <script src="js/types.js?v=10"></script>
+    <script src="js/db.js?v=11"></script>
+    <script src="js/storage.js?v=11"></script>
+    <script src="js/yahoo-finance.js?v=11"></script>
+    <script src="js/finnhub.js?v=11"></script>
+    <script src="js/sectors.js?v=11"></script>
+    <script src="js/payoff.js?v=11"></script>
+    <script src="js/fx.js?v=11"></script>
+    <script src="js/health.js?v=11"></script>
+    <script src="js/calendar.js?v=11"></script>
+    <script src="js/watchlist.js?v=11"></script>
+    <script src="js/types.js?v=11"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=10"></script>
+    <script src="app.js?v=11"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {

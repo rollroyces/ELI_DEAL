@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200" role="img" aria-hidden="true">
+  <title>No deals yet</title>
+  <!-- Muted geometric line-art. Uses mid-tone fills so it reads on light and dark. -->
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- baseline + y axis -->
+    <path d="M40 160 H292" stroke="currentColor" stroke-opacity="0.18" stroke-width="2"/>
+    <path d="M40 44 V160" stroke="currentColor" stroke-opacity="0.18" stroke-width="2"/>
+
+    <!-- barrier line (dashed) -->
+    <path d="M40 122 H292" stroke="#f87171" stroke-opacity="0.65" stroke-width="2" stroke-dasharray="5 6"/>
+
+    <!-- candles: rising, then breaking down through the barrier -->
+    <g stroke-width="2">
+      <!-- candle 1 (green) -->
+      <path d="M62 150 V128" stroke="#4ade80" stroke-opacity="0.55"/>
+      <rect x="56" y="136" width="12" height="16" rx="2" fill="#4ade80" fill-opacity="0.22" stroke="#4ade80" stroke-opacity="0.65"/>
+      <!-- candle 2 (green) -->
+      <path d="M92 136 V108" stroke="#4ade80" stroke-opacity="0.55"/>
+      <rect x="86" y="116" width="12" height="18" rx="2" fill="#4ade80" fill-opacity="0.22" stroke="#4ade80" stroke-opacity="0.65"/>
+      <!-- candle 3 (green) -->
+      <path d="M122 118 V86" stroke="#4ade80" stroke-opacity="0.55"/>
+      <rect x="116" y="94" width="12" height="20" rx="2" fill="#4ade80" fill-opacity="0.22" stroke="#4ade80" stroke-opacity="0.65"/>
+      <!-- candle 4 (red, breaches) -->
+      <path d="M152 96 V140" stroke="#f87171" stroke-opacity="0.65"/>
+      <rect x="146" y="104" width="12" height="22" rx="2" fill="#f87171" fill-opacity="0.25" stroke="#f87171" stroke-opacity="0.8"/>
+      <!-- candle 5 (red) -->
+      <path d="M182 106 V148" stroke="#f87171" stroke-opacity="0.55"/>
+      <rect x="176" y="114" width="12" height="24" rx="2" fill="#f87171" fill-opacity="0.22" stroke="#f87171" stroke-opacity="0.7"/>
+      <!-- candle 6 (red) -->
+      <path d="M212 120 V154" stroke="#f87171" stroke-opacity="0.5"/>
+      <rect x="206" y="128" width="12" height="20" rx="2" fill="#f87171" fill-opacity="0.2" stroke="#f87171" stroke-opacity="0.6"/>
+    </g>
+
+    <!-- shield badge overlapping the breach point -->
+    <g transform="translate(238 88)">
+      <path d="M0 -26 L20 -17 V2 C20 15 11 23 0 28 C-11 23 -20 15 -20 2 V-17 Z"
+            fill="#4fc3f7" fill-opacity="0.14" stroke="#4fc3f7" stroke-opacity="0.85" stroke-width="2"/>
+      <path d="M-7 2 L-2 8 L8 -6" stroke="#4fc3f7" stroke-opacity="0.95" stroke-width="2.5"/>
+    </g>
+
+    <!-- knob dot where the series crosses the barrier -->
+    <circle cx="152" cy="122" r="4.5" fill="#f87171" fill-opacity="0.9"/>
+    <circle cx="152" cy="122" r="9" fill="none" stroke="#f87171" stroke-opacity="0.35" stroke-width="2"/>
+  </g>
+</svg>

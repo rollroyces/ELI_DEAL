@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" width="880" height="300" role="img" aria-labelledby="eli-hero-title eli-hero-desc">
+  <title id="eli-hero-title">HK ELI Portfolio Manager</title>
+  <desc id="eli-hero-desc">A Hong Kong equity-linked investment dashboard: candlestick charts with knock-in barriers on the left, a portfolio health gauge and payoff curve on the right, and a cash-flow calendar along the bottom.</desc>
+  <defs>
+    <linearGradient id="heroBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e1116"/>
+      <stop offset="1" stop-color="#13343b"/>
+    </linearGradient>
+    <linearGradient id="heroSpark" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#f87171" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#facc15" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#4ade80" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="880" height="300" rx="14" fill="url(#heroBg)"/>
+
+  <!-- ── header ─────────────────────────────────────────────── -->
+  <g stroke-linecap="round">
+    <path d="M30 34 H64 M30 34 L48 22 L64 41" stroke="#4fc3f7" stroke-width="2.5" fill="none"/>
+    <rect x="80" y="26" width="128" height="7" rx="3.5" fill="#f5f5f5" fill-opacity="0.72"/>
+    <rect x="80" y="39" width="86" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.3"/>
+    <rect x="700" y="26" width="72" height="18" rx="9" fill="#4fc3f7" fill-opacity="0.18" stroke="#4fc3f7" stroke-opacity="0.55"/>
+    <circle cx="802" cy="35" r="9" fill="#4ade80" fill-opacity="0.22" stroke="#4ade80" stroke-opacity="0.6"/>
+  </g>
+
+  <!-- ── left: candlestick + barrier ────────────────────────── -->
+  <g transform="translate(30 66)">
+    <rect width="400" height="150" rx="10" fill="#f5f5f5" fill-opacity="0.03" stroke="#f5f5f5" stroke-opacity="0.09"/>
+    <path d="M16 122 H384" stroke="#f5f5f5" stroke-opacity="0.12"/>
+    <path d="M16 92 H384" stroke="#f87171" stroke-opacity="0.6" stroke-dasharray="5 6" fill="none"/>
+    <g stroke-width="1.6">
+      <!-- green run -->
+      <path d="M36 116 V96" stroke="#4ade80" stroke-opacity="0.55"/><rect x="30" y="104" width="12" height="12" rx="2" fill="#4ade80" fill-opacity="0.3" stroke="#4ade80" stroke-opacity="0.6"/>
+      <path d="M66 100 V76" stroke="#4ade80" stroke-opacity="0.55"/><rect x="60" y="86" width="12" height="14" rx="2" fill="#4ade80" fill-opacity="0.3" stroke="#4ade80" stroke-opacity="0.6"/>
+      <path d="M96 82 V52" stroke="#4ade80" stroke-opacity="0.55"/><rect x="90" y="62" width="12" height="18" rx="2" fill="#4ade80" fill-opacity="0.32" stroke="#4ade80" stroke-opacity="0.65"/>
+      <!-- red drop through barrier -->
+      <path d="M126 62 V108" stroke="#f87171" stroke-opacity="0.7"/><rect x="120" y="70" width="12" height="26" rx="2" fill="#f87171" fill-opacity="0.32" stroke="#f87171" stroke-opacity="0.75"/>
+      <path d="M156 76 V118" stroke="#f87171" stroke-opacity="0.6"/><rect x="150" y="84" width="12" height="24" rx="2" fill="#f87171" fill-opacity="0.3" stroke="#f87171" stroke-opacity="0.65"/>
+      <path d="M186 92 V124" stroke="#f87171" stroke-opacity="0.55"/><rect x="180" y="98" width="12" height="20" rx="2" fill="#f87171" fill-opacity="0.28" stroke="#f87171" stroke-opacity="0.6"/>
+      <!-- recovery -->
+      <path d="M216 104 V82" stroke="#facc15" stroke-opacity="0.55"/><rect x="210" y="88" width="12" height="16" rx="2" fill="#facc15" fill-opacity="0.28" stroke="#facc15" stroke-opacity="0.6"/>
+      <path d="M246 88 V60" stroke="#4ade80" stroke-opacity="0.6"/><rect x="240" y="68" width="12" height="20" rx="2" fill="#4ade80" fill-opacity="0.32" stroke="#4ade80" stroke-opacity="0.65"/>
+      <path d="M276 66 V38" stroke="#4ade80" stroke-opacity="0.6"/><rect x="270" y="46" width="12" height="20" rx="2" fill="#4ade80" fill-opacity="0.34" stroke="#4ade80" stroke-opacity="0.7"/>
+    </g>
+    <circle cx="126" cy="92" r="4" fill="#f87171" fill-opacity="0.9"/>
+    <circle cx="126" cy="92" r="9" fill="none" stroke="#f87171" stroke-opacity="0.32"/>
+    <!-- mini payoff curve overlay -->
+    <path d="M300 118 C322 116 340 100 352 78 C364 56 372 42 380 32" stroke="url(#heroSpark)" stroke-width="2.5" fill="none"/>
+    <circle cx="380" cy="32" r="4" fill="#4ade80" fill-opacity="0.85"/>
+  </g>
+
+  <!-- ── top-right: health gauge ────────────────────────────── -->
+  <g transform="translate(452 66)">
+    <rect width="200" height="70" rx="10" fill="#f5f5f5" fill-opacity="0.03" stroke="#f5f5f5" stroke-opacity="0.09"/>
+    <path d="M22 50 A22 22 0 0 1 66 50" stroke="#f5f5f5" stroke-opacity="0.14" stroke-width="6" fill="none"/>
+    <path d="M22 50 A22 22 0 0 1 60 32" stroke="#4ade80" stroke-opacity="0.75" stroke-width="6" fill="none"/>
+    <text x="76" y="44" fill="#f5f5f5" fill-opacity="0.85" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700">82</text>
+    <text x="104" y="44" fill="#f5f5f5" fill-opacity="0.4" font-family="Helvetica, Arial, sans-serif" font-size="13">/100</text>
+    <rect x="22" y="58" width="140" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.12"/>
+    <rect x="22" y="58" width="118" height="5" rx="2.5" fill="#4ade80" fill-opacity="0.6"/>
+  </g>
+
+  <!-- ── bottom-right: sector doughnut ──────────────────────── -->
+  <g transform="translate(664 66)">
+    <rect width="186" height="150" rx="10" fill="#f5f5f5" fill-opacity="0.03" stroke="#f5f5f5" stroke-opacity="0.09"/>
+    <circle cx="58" cy="75" r="40" fill="none" stroke="#f5f5f5" stroke-opacity="0.1" stroke-width="15"/>
+    <circle cx="58" cy="75" r="40" fill="none" stroke="#4fc3f7" stroke-opacity="0.8" stroke-width="15" stroke-dasharray="94 251" transform="rotate(-90 58 75)"/>
+    <circle cx="58" cy="75" r="40" fill="none" stroke="#4ade80" stroke-opacity="0.75" stroke-width="15" stroke-dasharray="63 251" stroke-dashoffset="-100" transform="rotate(-90 58 75)"/>
+    <circle cx="58" cy="75" r="40" fill="none" stroke="#facc15" stroke-opacity="0.7" stroke-width="15" stroke-dasharray="47 251" stroke-dashoffset="-169" transform="rotate(-90 58 75)"/>
+    <circle cx="58" cy="75" r="40" fill="none" stroke="#f87171" stroke-opacity="0.6" stroke-width="15" stroke-dasharray="31 251" stroke-dashoffset="-222" transform="rotate(-90 58 75)"/>
+    <circle cx="58" cy="75" r="18" fill="#0e1116" fill-opacity="0.6"/>
+    <g>
+      <rect x="112" y="52" width="8" height="8" rx="2" fill="#4fc3f7" fill-opacity="0.8"/>
+      <rect x="124" y="54" width="48" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.3"/>
+      <rect x="112" y="70" width="8" height="8" rx="2" fill="#4ade80" fill-opacity="0.75"/>
+      <rect x="124" y="72" width="38" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.3"/>
+      <rect x="112" y="88" width="8" height="8" rx="2" fill="#facc15" fill-opacity="0.7"/>
+      <rect x="124" y="90" width="44" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.3"/>
+      <rect x="112" y="106" width="8" height="8" rx="2" fill="#f87171" fill-opacity="0.6"/>
+      <rect x="124" y="108" width="30" height="5" rx="2.5" fill="#f5f5f5" fill-opacity="0.3"/>
+    </g>
+  </g>
+
+  <!-- ── bottom: cash-flow calendar rail ───────────────────── -->
+  <g transform="translate(452 148)">
+    <rect width="196" height="68" rx="10" fill="#f5f5f5" fill-opacity="0.03" stroke="#f5f5f5" stroke-opacity="0.09"/>
+    <path d="M22 40 H174" stroke="#f5f5f5" stroke-opacity="0.14" fill="none"/>
+    <circle cx="44" cy="40" r="6" fill="#4ade80" fill-opacity="0.35" stroke="#4ade80" stroke-opacity="0.75"/>
+    <circle cx="82" cy="40" r="6" fill="#4ade80" fill-opacity="0.35" stroke="#4ade80" stroke-opacity="0.75"/>
+    <circle cx="120" cy="40" r="6" fill="#4ade80" fill-opacity="0.35" stroke="#4ade80" stroke-opacity="0.75"/>
+    <path d="M166 40 V22" stroke="#4fc3f7" stroke-opacity="0.85" stroke-width="2"/>
+    <path d="M166 22 L180 25 L166 29 Z" fill="#4fc3f7" fill-opacity="0.4" stroke="#4fc3f7" stroke-opacity="0.85" stroke-width="1.5"/>
+    <rect x="34" y="54" width="42" height="4" rx="2" fill="#f5f5f5" fill-opacity="0.2"/>
+    <rect x="108" y="54" width="42" height="4" rx="2" fill="#f5f5f5" fill-opacity="0.2"/>
+  </g>
+
+  <!-- ── bottom-right: payoff curve card (clear of the doughnut above) ── -->
+  <g transform="translate(664 148)">
+    <rect width="186" height="68" rx="10" fill="#f5f5f5" fill-opacity="0.03" stroke="#f5f5f5" stroke-opacity="0.09"/>
+    <path d="M18 56 C48 54 70 44 90 30 C110 16 132 12 168 10" stroke="url(#heroSpark)" stroke-width="2.5" fill="none"/>
+    <circle cx="168" cy="10" r="3.5" fill="#4ade80" fill-opacity="0.85"/>
+    <path d="M18 60 H168" stroke="#f5f5f5" stroke-opacity="0.1" fill="none"/>
+  </g>
+
+  <!-- caption -->
+  <text x="30" y="252" fill="#f5f5f5" fill-opacity="0.92" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700">HK ELI Portfolio Manager</text>
+  <text x="30" y="276" fill="#f5f5f5" fill-opacity="0.5" font-family="Helvetica, Arial, sans-serif" font-size="14">Live HK prices · worst-performer payoff · barrier risk · cash-flow calendar · multi-currency</text>
+</svg>
