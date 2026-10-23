@@ -51,7 +51,7 @@
                         <div class="alert-popover hidden" id="alert-popover">
                             <div class="alert-popover-header">
                                 <h3>Alerts</h3>
-                                <button class="btn btn--sm" id="clear-alerts">Clear All</button>
+                                <button class="btn btn--sm" id="clear-alerts">Acknowledge all</button>
                             </div>
                             <div class="alert-popover-content" id="alert-popover-content">
                             </div>
@@ -714,12 +714,25 @@
                             <p class="form-help">The built-in alerts cover barrier breach, barrier proximity, and maturity. Add your own rules for anything else you want to watch.</p>
                             <div class="form-row" style="gap: 8px;">
                                 <select class="form-control" id="alert-rule-type" aria-label="Rule condition">
-                                    <option value="price_above">Price above…</option>
-                                    <option value="price_below">Price below…</option>
-                                    <option value="health_below">Health score below…</option>
-                                    <option value="pnl_above">Deal P&amp;L above…</option>
-                                    <option value="pnl_below">Deal P&amp;L below…</option>
-                                    <option value="maturity_within">Matures within…</option>
+                                    <optgroup label="Single symbol">
+                                        <option value="price_above">Price above…</option>
+                                        <option value="price_below">Price below…</option>
+                                    </optgroup>
+                                    <optgroup label="Single deal">
+                                        <option value="health_below">Health score below…</option>
+                                        <option value="pnl_above">Deal P&amp;L above…</option>
+                                        <option value="pnl_below">Deal P&amp;L below…</option>
+                                        <option value="maturity_within">Matures within…</option>
+                                    </optgroup>
+                                    <optgroup label="By tag">
+                                        <option value="worst_health_in_tag">Worst health in tag…</option>
+                                        <option value="worst_pnl_in_tag">Worst P&amp;L in tag…</option>
+                                        <option value="any_breach_in_tag">Any barrier breach in tag…</option>
+                                    </optgroup>
+                                    <optgroup label="By sector">
+                                        <option value="worst_health_in_sector">Worst health in sector…</option>
+                                        <option value="any_breach_in_sector">Any barrier breach in sector…</option>
+                                    </optgroup>
                                 </select>
                                 <select class="form-control" id="alert-rule-target" aria-label="Rule target">
                                     <option value="">— target —</option>
@@ -970,6 +983,20 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div class="card">
+                                <div class="card__body">
+                                    <h3>Desktop Notifications</h3>
+                                    <p class="form-help" id="notification-permission-note">
+                                        Get alerted about barrier breaches and custom rules even when this tab is in the background.
+                                    </p>
+                                    <div class="form-actions" style="margin-top: 12px;">
+                                        <button class="btn btn--primary" id="enable-notifications" type="button">
+                                            <i class="fas fa-bell"></i> Enable desktop notifications
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1146,22 +1173,22 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=13 is a cache-bust so updates aren't held by the browser's
+         ?v=14 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=13"></script>
-    <script src="js/storage.js?v=13"></script>
-    <script src="js/yahoo-finance.js?v=13"></script>
-    <script src="js/finnhub.js?v=13"></script>
-    <script src="js/sectors.js?v=13"></script>
-    <script src="js/payoff.js?v=13"></script>
-    <script src="js/fx.js?v=13"></script>
-    <script src="js/health.js?v=13"></script>
-    <script src="js/calendar.js?v=13"></script>
-    <script src="js/alerts.js?v=13"></script>
-    <script src="js/watchlist.js?v=13"></script>
-    <script src="js/types.js?v=13"></script>
+    <script src="js/db.js?v=14"></script>
+    <script src="js/storage.js?v=14"></script>
+    <script src="js/yahoo-finance.js?v=14"></script>
+    <script src="js/finnhub.js?v=14"></script>
+    <script src="js/sectors.js?v=14"></script>
+    <script src="js/payoff.js?v=14"></script>
+    <script src="js/fx.js?v=14"></script>
+    <script src="js/health.js?v=14"></script>
+    <script src="js/calendar.js?v=14"></script>
+    <script src="js/alerts.js?v=14"></script>
+    <script src="js/watchlist.js?v=14"></script>
+    <script src="js/types.js?v=14"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {

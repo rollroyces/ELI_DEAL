@@ -42,7 +42,15 @@
     health_below:    { label: 'Health score below', unit: '/100', severity: 'warning', scope: 'deal' },
     pnl_above:       { label: 'P&L above',         unit: 'HK$', severity: 'info',     scope: 'deal' },
     pnl_below:       { label: 'P&L below',         unit: 'HK$', severity: 'critical', scope: 'deal' },
-    maturity_within: { label: 'Matures within',    unit: 'days', severity: 'info',    scope: 'deal' }
+    maturity_within: { label: 'Matures within',    unit: 'days', severity: 'info',    scope: 'deal' },
+
+    // Aggregate forms: "any deal tagged X", "any deal in sector Y".
+    // These are what you'd actually want once the portfolio is big.
+    worst_health_in_tag:   { label: 'Worst health in tag',    unit: '/100', severity: 'warning', scope: 'tag' },
+    worst_pnl_in_tag:      { label: 'Worst P&L in tag',       unit: 'HK$',  severity: 'critical', scope: 'tag' },
+    any_breach_in_tag:     { label: 'Any barrier breach in tag', unit: '',   severity: 'critical', scope: 'tag' },
+    worst_health_in_sector:{ label: 'Worst health in sector', unit: '/100', severity: 'warning', scope: 'sector' },
+    any_breach_in_sector:  { label: 'Any barrier breach in sector', unit: '', severity: 'critical', scope: 'sector' }
   };
 
   function escapeHtml(s) {
@@ -123,22 +131,35 @@
 
     // Symbol-scoped (price rules)
     if (meta.scope === 'symbol') {
-      var found = null, owner = null;
-      deals.forEach(function (d) {
-        (d.underlyingAssets || []).forEach(function (a) {
-          if (a.symbol === rule.target && typeof a.currentPrice === 'number') {
-            found = a.currentPrice;
-            owner = d;
+      // Deals normally share a price for a symbol (one refresh writes
+      // them all), but a manual edit or a stale CSV import can leave two
+      // holders disagreeing. Scan them all and take the CONSERVATIVE
+      // price so the alert fires if any holder believes the condition
+      // holds — and so the result never depends on array order.
+      var seen = 0, owner = null;
+      var best = rule.type === 'price_above' ? -Infinity : Infinity;
+      for (var d = 0; d < deals.length; d++) {
+        var assets = deals[d].underlyingAssets || [];
+        for (var a = 0; a < assets.length; a++) {
+          var ast = assets[a];
+          if (ast.symbol !== rule.target) continue;
+          if (typeof ast.currentPrice !== 'number') continue;
+          seen++;
+          if (!owner) owner = deals[d];
+          if (rule.type === 'price_above') {
+            if (ast.currentPrice > best) best = ast.currentPrice;
+          } else {
+            if (ast.currentPrice < best) best = ast.currentPrice;
           }
-        });
-      });
-      if (found == null) return { fired: false };
-      var priceHit = rule.type === 'price_above' ? found >= rule.value : found <= rule.value;
+        }
+      }
+      if (!seen) return { fired: false };
+      var priceHit = rule.type === 'price_above' ? best >= rule.value : best <= rule.value;
       return {
         fired: priceHit,
         severity: meta.severity,
         dealId: owner ? owner.id : null,
-        message: rule.target + ' at HK$' + found.toFixed(2)
+        message: rule.target + ' at HK$' + best.toFixed(2)
           + (rule.type === 'price_above' ? ' ≥ ' : ' ≤ ') + 'HK$' + rule.value.toFixed(2)
       };
     }
@@ -182,6 +203,107 @@
     return { fired: false };
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Aggregate rules — evaluate across a tag or sector, not one deal
+  // ──────────────────────────────────────────────────────────────────
+  function sectorOf(symbol) {
+    return (global.Sectors && typeof Sectors.lookup === 'function')
+      ? Sectors.lookup(symbol).sector
+      : null;
+  }
+
+  /**
+   * Evaluate an aggregate rule (scope 'tag' or 'sector').
+   * @param {AlertRule} rule
+   * @param {import('./types.js').Deal[]} deals
+   * @param {Object} helpers  { dealHealth }
+   * @returns {{fired: boolean, message?: string, severity?: string, dealId?: string}}
+   */
+  function evaluateAggregateRule(rule, deals, helpers) {
+    helpers = helpers || {};
+    if (!rule || rule.enabled === false) return { fired: false };
+    var meta = TYPE_META[rule.type];
+    if (!meta || (meta.scope !== 'tag' && meta.scope !== 'sector')) return { fired: false };
+
+    // Select the deals this rule applies to.
+    var scope = meta.scope;
+    var target = String(rule.target || '').toLowerCase();
+    var matched = deals.filter(function (d) {
+      if (scope === 'tag') {
+        return (d.tags || []).some(function (t) { return String(t).toLowerCase() === target; });
+      }
+      return (d.underlyingAssets || []).some(function (a) {
+        var s = sectorOf(a.symbol);
+        return s && s.toLowerCase() === target;
+      });
+    });
+    if (!matched.length) return { fired: false };
+
+    var hits = [];
+
+    if (rule.type === 'worst_health_in_tag' || rule.type === 'worst_health_in_sector') {
+      if (!helpers.dealHealth) return { fired: false };
+      matched.forEach(function (d) {
+        var h = helpers.dealHealth(d);
+        if (h && h.total <= rule.value) {
+          hits.push({ dealId: d.id, text: d.dealName + ' health ' + h.total });
+        }
+      });
+      if (!hits.length) return { fired: false };
+      return {
+        fired: true,
+        severity: meta.severity,
+        dealId: hits[0].dealId,
+        message: hits.length + ' ' + scope + ' \'' + rule.target + '\' deal(s) at or below health ' +
+          rule.value + ' — worst: ' + hits[0].text
+      };
+    }
+
+    if (rule.type === 'worst_pnl_in_tag') {
+      matched.forEach(function (d) {
+        var p = d.pnl || 0;
+        if (p <= rule.value) {
+          hits.push({
+            dealId: d.id,
+            text: d.dealName + ' P&L ' + Math.round(p).toLocaleString()
+          });
+        }
+      });
+      if (!hits.length) return { fired: false };
+      return {
+        fired: true,
+        severity: meta.severity,
+        dealId: hits[0].dealId,
+        message: hits.length + ' deal(s) tagged \'' + rule.target + '\' at or below ' +
+          Math.round(rule.value).toLocaleString() + ' — worst: ' + hits[0].text
+      };
+    }
+
+    if (rule.type === 'any_breach_in_tag' || rule.type === 'any_breach_in_sector') {
+      matched.forEach(function (d) {
+        (d.underlyingAssets || []).forEach(function (a) {
+          if (a.barrierLevel && a.currentPrice && a.currentPrice <= a.barrierLevel) {
+            hits.push({
+              dealId: d.id,
+              text: d.dealName + ' → ' + a.symbol + ' at HK$' + a.currentPrice.toFixed(2) +
+                ' (barrier HK$' + a.barrierLevel.toFixed(2) + ')'
+            });
+          }
+        });
+      });
+      if (!hits.length) return { fired: false };
+      return {
+        fired: true,
+        severity: meta.severity,
+        dealId: hits[0].dealId,
+        message: hits.length + ' barrier breach(es) in ' + scope + ' \'' + rule.target + '\' — ' +
+          hits[0].text
+      };
+    }
+
+    return { fired: false };
+  }
+
   /**
    * Evaluate every enabled rule, returning alert objects shaped like the
    * built-in ones so the existing renderer needs no changes.
@@ -195,18 +317,25 @@
     var now = Date.now();
     var out = [];
     (rules || []).forEach(function (rule) {
+      var meta = TYPE_META[rule.type];
       var r;
-      try { r = evaluateRule(rule, deals, helpers); }
+      try {
+        r = evaluateAggregateRule(rule, deals, helpers);
+        if (!r.fired && meta && (meta.scope === 'symbol' || meta.scope === 'deal')) {
+          r = evaluateRule(rule, deals, helpers);
+        }
+      }
       catch (e) { return; }
       if (!r.fired) return;
       out.push({
         id: 'ALERT-' + rule.id,
-        type: TYPE_META[rule.type].label,
+        type: (meta && meta.label) || rule.type,
         message: r.message,
         timestamp: now,
         severity: r.severity,
         dealId: r.dealId || null,
         custom: true,
+        ruleId: rule.id,
         read: false
       });
     });
@@ -305,6 +434,93 @@
     return !!(deal && typeof deal.notes === 'string' && deal.notes.trim().length);
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Acknowledgement
+  //
+  // Alerts are rebuilt from scratch on every price refresh, so without
+  // this an alert you already dealt with would come back as unread
+  // forever and the badge count could never drop. We persist the set of
+  // alert ids the user has acknowledged and filter against it.
+  //
+  // An acknowledgement expires after ACKNOWLEDGEMENT_TTL_MS so a
+  // condition that clears and later returns gets flagged again.
+  // ──────────────────────────────────────────────────────────────────
+  var ACKNOWLEDGEMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+  var ACKS_KEY = 'eli_alert_acks_v1';
+  var MAX_ACKS = 500;
+
+  function readAcks() {
+    try {
+      var raw = localStorage.getItem(ACKS_KEY);
+      var obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch (e) { return {}; }
+  }
+
+  function writeAcks(acks) {
+    try {
+      var keys = Object.keys(acks);
+      // Keep it bounded: drop the oldest entries first.
+      if (keys.length > MAX_ACKS) {
+        var sorted = keys.sort(function (a, b) {
+          return (acks[a].ts || 0) - (acks[b].ts || 0);
+        });
+        sorted.slice(0, keys.length - MAX_ACKS).forEach(function (k) { delete acks[k]; });
+      }
+      localStorage.setItem(ACKS_KEY, JSON.stringify(acks));
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Acknowledge one alert id. */
+  function acknowledge(alertId) {
+    var acks = readAcks();
+    acks[alertId] = { ts: Date.now() };
+    writeAcks(acks);
+    return acks;
+  }
+
+  /** Acknowledge every id in `ids`. */
+  function acknowledgeAll(ids) {
+    var acks = readAcks();
+    (ids || []).forEach(function (id) { acks[id] = { ts: Date.now() }; });
+    writeAcks(acks);
+    return acks;
+  }
+
+  /** Drop acknowledgements so those alerts can surface again. */
+  function resetAcknowledgements(ids) {
+    var acks = readAcks();
+    if (ids && ids.length) {
+      ids.forEach(function (id) { delete acks[id]; });
+    } else {
+      acks = {};
+    }
+    writeAcks(acks);
+    return acks;
+  }
+
+  /**
+   * Mark alerts as read/unread based on the acknowledgement store.
+   * Mutates and returns the array.
+   */
+  function applyAcknowledgements(alerts) {
+    var acks = readAcks();
+    var now = Date.now();
+    (alerts || []).forEach(function (a) {
+      var ack = acks[a.id];
+      var live = ack && (now - (ack.ts || 0) < ACKNOWLEDGEMENT_TTL_MS);
+      a.read = !!live;
+      if (ack && !live) delete acks[a.id]; // expired, prune on the way through
+    });
+    writeAcks(acks);
+    return alerts;
+  }
+
+  /** Count of alerts that have not been acknowledged. */
+  function unreadCount(alerts) {
+    return (alerts || []).filter(function (a) { return !a.read; }).length;
+  }
+
   global.AlertRules = {
     TYPE_META: TYPE_META,
     makeRule: makeRule,
@@ -312,11 +528,18 @@
     removeRule: removeRule,
     toggleRule: toggleRule,
     evaluateRule: evaluateRule,
+    evaluateAggregateRule: evaluateAggregateRule,
     evaluateRules: evaluateRules,
     attributeDealPnl: attributeDealPnl,
     attributePortfolioPnl: attributePortfolioPnl,
     cleanNote: cleanNote,
     hasNote: hasNote,
-    escapeHtml: escapeHtml
+    escapeHtml: escapeHtml,
+    acknowledge: acknowledge,
+    acknowledgeAll: acknowledgeAll,
+    resetAcknowledgements: resetAcknowledgements,
+    applyAcknowledgements: applyAcknowledgements,
+    unreadCount: unreadCount,
+    ACKNOWLEDGEMENT_TTL_MS: ACKNOWLEDGEMENT_TTL_MS
   };
 })(window);
