@@ -82,6 +82,7 @@ jobs:
             js/health.js
             js/calendar.js
             js/watchlist.js
+            js/alerts.js
             js/types.js
             tests.html
             manifest.webmanifest

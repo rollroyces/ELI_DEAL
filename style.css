@@ -3038,3 +3038,107 @@ input[type="range"] {
 
 /* The injected print sheet is only ever shown on paper. */
 #print-summary { display: none; }
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 11 additions: custom alert rules, deal notes, P&L attribution.
+   ────────────────────────────────────────────────────────────────── */
+
+/* Custom alert rules */
+.alert-rules-card { margin-bottom: 24px; }
+.alert-rule-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 13px;
+}
+.alert-rule-row:last-child { border-bottom: none; }
+.alert-rule-row.disabled .alert-rule-text {
+  text-decoration: line-through;
+  color: var(--color-text-secondary);
+}
+.alert-rule-text {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  color: var(--color-text);
+}
+.alert-rule-toggle { display: flex; align-items: center; }
+.alert-rule-remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-error);
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.alert-rule-remove:hover { background: var(--color-secondary); }
+
+/* Deal notes in the detail modal */
+.deal-notes-input {
+  width: 100%;
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* P&L attribution */
+.attribution-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto 56px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.attribution-row:last-child { border-bottom: none; }
+.attribution-symbol { display: flex; flex-direction: column; }
+.attribution-symbol strong {
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  color: var(--color-text);
+}
+.attribution-symbol small {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attribution-bar {
+  height: 8px;
+  background: var(--color-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.attribution-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.attribution-fill.positive { background: #4ade80; }
+.attribution-fill.negative { background: #f87171; }
+.attribution-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-width: 90px;
+}
+.attribution-value.positive { color: #4ade80; }
+.attribution-value.negative { color: #f87171; }
+.attribution-pct {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 620px) {
+  .attribution-row { grid-template-columns: 110px 1fr auto; }
+  .attribution-pct { display: none; }
+}
