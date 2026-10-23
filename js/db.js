@@ -230,9 +230,60 @@
 
   function exportBytes() { return db.export(); }
 
+  // ── OPFS flush coalescing ───────────────────────────────────────────
+  // db.export() serialises the ENTIRE database to a fresh byte array, and
+  // writeOpfsBytes() rewrites the whole file. A single price refresh used
+  // to trigger two of those back-to-back (setCachedPrices + recordSnapshots),
+  // and a manual edit triggers more. With ~1 MB of price_history that is
+  // tens of MB written per day to persist a few KB of new rows.
+  //
+  // Coalescing: collapse any number of flushes in a short window into one
+  // write. The DB is already committed in memory by the time we get here,
+  // so the only cost of deferring is a few hundred ms of durability lag.
+  var FLUSH_DEBOUNCE_MS = 400;
+  var _flushTimer = null;
+  var _flushInFlight = null;
+  var _flushPendingAgain = false;
+
   async function flushToOpfs() {
-    if (!useOpfs) return;
+    if (!useOpfs || !db) return;
+    // Coalesce: schedule a single write instead of racing to the file.
+    _flushPendingAgain = true;
+    if (_flushTimer) return _flushInFlight || Promise.resolve();
+    return new Promise(function (resolve) {
+      _flushTimer = setTimeout(function () {
+        _flushTimer = null;
+        _flushInFlight = (async function () {
+          try {
+            // Only one write per tick even if flushes piled up meanwhile.
+            if (_flushPendingAgain) {
+              _flushPendingAgain = false;
+              await writeOpfsBytes(exportBytes());
+            }
+          } catch (e) {
+            lastError = e;
+          } finally {
+            _flushInFlight = null;
+          }
+        })();
+        resolve(_flushInFlight);
+      }, FLUSH_DEBOUNCE_MS);
+    });
+  }
+
+  /**
+   * Force any coalesced write out immediately.
+   * Call before the page unloads or the user exports the .db file, so
+   * nothing in flight is lost.
+   */
+  async function flushNow() {
+    if (_flushTimer) {
+      clearTimeout(_flushTimer);
+      _flushTimer = null;
+    }
+    if (!useOpfs || !db) return;
     try {
+      _flushPendingAgain = false;
       await writeOpfsBytes(exportBytes());
     } catch (e) {
       lastError = e;
@@ -289,6 +340,9 @@
   async function exportFile() {
     await init();
     if (!db) return null;
+    // Make sure any coalesced write is on disk before the user downloads
+    // the file — otherwise the export could lag the in-memory DB.
+    await flushNow();
     return exportBytes();
   }
 
@@ -490,6 +544,7 @@
     saveDeals: saveDeals,
     getDeals: getDeals,
     exportFile: exportFile,
+    flushNow: flushNow,
     importFile: importFile,
     clearAll: clearAll,
     getCachedPrices: getCachedPrices,

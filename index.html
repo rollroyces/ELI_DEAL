@@ -11,9 +11,21 @@
     <link rel="icon" type="image/svg+xml" href="assets/icon-192.svg">
     <link rel="apple-touch-icon" href="assets/icon-192.svg">
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Pinned + SRI. chart.js used to load unversioned, so a breaking
+         release on the CDN could break every chart in the app with no
+         code change and no way to bisect it. Pinning makes the deploy
+         reproducible; SRI makes a tampered or hijacked asset fail loudly
+         instead of executing. -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+            integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"
+            integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+          rel="stylesheet"
+          integrity="sha384-PPIZEGYM1v8zp5Py7UjFb79S58UeqCL9pYVnVPURKEqvioPROaVAJKKLzvH2rDnI"
+          crossorigin="anonymous" referrerpolicy="no-referrer">
 </head>
 <body>
     <div class="app-container">
@@ -1173,22 +1185,22 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=14 is a cache-bust so updates aren't held by the browser's
+         ?v=15 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=14"></script>
-    <script src="js/storage.js?v=14"></script>
-    <script src="js/yahoo-finance.js?v=14"></script>
-    <script src="js/finnhub.js?v=14"></script>
-    <script src="js/sectors.js?v=14"></script>
-    <script src="js/payoff.js?v=14"></script>
-    <script src="js/fx.js?v=14"></script>
-    <script src="js/health.js?v=14"></script>
-    <script src="js/calendar.js?v=14"></script>
-    <script src="js/alerts.js?v=14"></script>
-    <script src="js/watchlist.js?v=14"></script>
-    <script src="js/types.js?v=14"></script>
+    <script src="js/db.js?v=15"></script>
+    <script src="js/storage.js?v=15"></script>
+    <script src="js/yahoo-finance.js?v=15"></script>
+    <script src="js/finnhub.js?v=15"></script>
+    <script src="js/sectors.js?v=15"></script>
+    <script src="js/payoff.js?v=15"></script>
+    <script src="js/fx.js?v=15"></script>
+    <script src="js/health.js?v=15"></script>
+    <script src="js/calendar.js?v=15"></script>
+    <script src="js/alerts.js?v=15"></script>
+    <script src="js/watchlist.js?v=15"></script>
+    <script src="js/types.js?v=15"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {

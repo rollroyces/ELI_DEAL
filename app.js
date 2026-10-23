@@ -887,12 +887,12 @@
       '<div class="deal-header"><div class="deal-header-left">' +
         '<div class="stock-count-badge"><i class="fas fa-layer-group"></i>' +
         deal.numberOfStocks + ' Stock' + (deal.numberOfStocks > 1 ? 's' : '') + '</div>' +
-        '<div class="deal-title">' + deal.dealName + '</div>' +
+        '<div class="deal-title">' + escapeHtml(deal.dealName) + '</div>' +
         '<div class="deal-id">' + deal.id + '</div>' +
         healthBadge +
       '</div>' +
       '<div class="deal-header-right">' +
-        '<div class="deal-status ' + statusClass + '">' + deal.status + '</div>' +
+        '<div class="deal-status ' + statusClass + '">' + escapeHtml(deal.status) + '</div>' +
         '<div class="deal-actions">' +
           '<button class="deal-action-btn edit" type="button" aria-label="Edit deal" title="Edit"><i class="fas fa-edit" aria-hidden="true"></i></button>' +
           '<button class="deal-action-btn delete" type="button" aria-label="Delete deal" title="Delete"><i class="fas fa-trash" aria-hidden="true"></i></button>' +
@@ -907,13 +907,13 @@
         '<div class="metric"><div class="metric-label">P&L</div><div class="metric-value ' + ((deal.pnl || 0) >= 0 ? 'positive' : 'negative') + '">' +
           ((deal.pnl || 0) >= 0 ? '+' : '') + formatCurrency(deal.pnl) + ' (' + pnlPct + '%)</div></div>' +
         '<div class="metric"><div class="metric-label">Days to Maturity</div><div class="metric-value">' + (daysToMat > 0 ? daysToMat : 'Settled') + '</div></div>' +
-        '<div class="metric"><div class="metric-label">Issuer</div><div class="metric-value">' + deal.issuer + '</div></div>' +
+        '<div class="metric"><div class="metric-label">Issuer</div><div class="metric-value">' + escapeHtml(deal.issuer) + '</div></div>' +
       '</div>' +
       '<div class="underlying-assets">' +
         (deal.underlyingAssets || []).map(function (a) {
           var change = calculatePriceChange(a);
           return '<div class="underlying-asset">' +
-            '<div class="asset-info"><h4><span class="hk-stock-code">' + a.symbol + '</span>' + a.name +
+            '<div class="asset-info"><h4><span class="hk-stock-code">' + escapeHtml(a.symbol) + '</span>' + escapeHtml(a.name) +
               (deal.numberOfStocks > 1 ? '<span class="asset-weight">(' + (a.weight * 100).toFixed(1) + '%)</span>' : '') +
               '</h4><p>Strike: ' + formatHKPrice(a.strikePrice, 4) + ' | Barrier: ' + formatHKPrice(a.barrierLevel, 4) + '</p></div>' +
             '<div class="price-info"><div class="current-price hk-currency">' + formatCurrency(a.currentPrice) + '</div>' +
@@ -1678,7 +1678,7 @@
         var ddMag = Math.abs(ddPct);
         var klass = ddMag >= 30 ? 'negative' : ddMag >= 15 ? 'warning' : 'positive';
         return '<div class="drawdown-row">'
-          + '<div class="drawdown-deal"><strong>' + d.dealName + '</strong><br><small class="form-help">' + best.symbol + '</small></div>'
+          + '<div class="drawdown-deal"><strong>' + escapeHtml(d.dealName) + '</strong><br><small class="form-help">' + escapeHtml(best.symbol) + '</small></div>'
           + '<div class="drawdown-bar"><div class="drawdown-fill ' + klass + '" style="width: ' + Math.min(100, ddMag * 2) + '%"></div></div>'
           + '<div class="drawdown-value ' + klass + '">' + (ddPct >= 0 ? '+' : '') + ddPct.toFixed(1) + '%</div>'
           + '</div>';
@@ -2146,7 +2146,7 @@
     var prev = sel.value;
     var opts = '<option value="">— Select a deal —</option>'
       + HKELIApp.data.eliDeals.map(function (d) {
-          return '<option value="' + d.id + '">' + d.dealName + ' (' + d.id + ')</option>';
+          return '<option value="' + escapeHtml(d.id) + '">' + escapeHtml(d.dealName) + ' (' + escapeHtml(d.id) + ')</option>';
         }).join('');
     sel.innerHTML = opts;
     if (prev && HKELIApp.data.eliDeals.some(function (d) { return d.id === prev; })) {
@@ -2215,7 +2215,7 @@
         var distBarrier = a.barrierLevel ? ((hp - a.barrierLevel) / a.barrierLevel) * 100 : null;
         var tag = Sectors.lookup(a.symbol);
         return '<tr>'
-          + '<td><strong>' + a.symbol + '</strong><br><small class="form-help">' + (a.name || '') + '</small></td>'
+          + '<td><strong>' + escapeHtml(a.symbol) + '</strong><br><small class="form-help">' + escapeHtml(a.name || '') + '</small></td>'
           + '<td><span class="badge badge-sector">' + tag.sector + '</span></td>'
           + '<td>' + formatHKPrice(a.strikePrice) + '</td>'
           + '<td>' + formatHKPrice(a.barrierLevel) + '</td>'
@@ -2395,7 +2395,7 @@
         if (proj.knockInTriggered) totals.knockIn++;
         var pnlClass = proj.totalReturn >= 0 ? 'positive' : 'negative';
         return '<tr>'
-          + '<td><strong>' + deal.dealName + '</strong><br><small class="form-help">' + deal.id + '</small></td>'
+          + '<td><strong>' + escapeHtml(deal.dealName) + '</strong><br><small class="form-help">' + escapeHtml(deal.id) + '</small></td>'
           + '<td>' + formatCurrency(deal.currentValue) + '</td>'
           + '<td>' + (proj.knockInTriggered ? '<span class="badge badge-knockin">Knock-in</span>' : '<span class="badge badge-par">Par</span>') + '</td>'
           + '<td>' + formatCurrency(proj.cashPayoff) + '</td>'
@@ -2608,7 +2608,7 @@
     }
     var opts = '<option value="">— pick a deal —</option>'
       + HKELIApp.data.eliDeals.map(function (d) {
-          return '<option value="' + d.id + '">' + d.dealName + ' (' + d.id + ')</option>';
+          return '<option value="' + escapeHtml(d.id) + '">' + escapeHtml(d.dealName) + ' (' + escapeHtml(d.id) + ')</option>';
         }).join('');
     a.innerHTML = opts;
     b.innerHTML = opts;
@@ -3197,16 +3197,59 @@
   }
 
   function clearAllData() {
-    if (!confirm('Clear all portfolio data? This cannot be undone (use Export first if you want a backup).')) return;
-    Storage.replaceAllDeals([]);
+    if (!confirm(
+      'Clear ALL portfolio data?\n\n' +
+      'This erases deals, price history, cached prices, alert rules and\n' +
+      'settings (including any saved Finnhub API key) from this browser.\n' +
+      'It cannot be undone — export first if you want a backup.'
+    )) return;
+
+    // The old path (Storage.replaceAllDeals([])) only touched the `deals`
+    // table. price_history, price_cache and settings — including the
+    // Finnhub API key — survived on disk. Wipe the whole database.
+    if (window.Db && typeof Db.clearAll === 'function') {
+      Db.clearAll().catch(function (e) {
+        console.error('Db.clearAll failed', e);
+        showToast('Database clear failed — some data may remain', 'error');
+      });
+    }
+
+    // localStorage mirrors: deals, settings, price cache, plus the keys
+    // owned by the alert / watchlist / fx modules.
+    [
+      'eli_deals_v1', 'eli_settings_v1', 'eli_price_cache_v1',
+      'eli_watchlist_v1', 'eli_fx_cache_v1', 'eli_alert_acks_v1',
+      'eli_schema_version'
+    ].forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
+    });
+    try { sessionStorage.removeItem('eli_banner_dismissed'); } catch (e) {}
+
+    // In-memory mirrors.
+    HKELIApp.data.eliDeals = [];
     HKELIApp.data.alerts = [];
-    loadDealsIntoState();
-    refreshDealViews();
+    HKELIApp.data.customAlerts = [];
+    HKELIApp.lastDeletedDeal = null;
+    if (HKELIApp.charts) HKELIApp.charts = {};
+
+    // Re-seed the SQLite schema so the app stays usable immediately.
+    if (window.Storage && Storage.refresh) Storage.refresh();
+
+    if (HKELIApp.refreshTimer) { clearInterval(HKELIApp.refreshTimer); HKELIApp.refreshTimer = null; }
+
     renderDashboard();
+    refreshDealViews();
     if (HKELIApp.currentView === 'deals') renderDeals();
     if (HKELIApp.currentView === 'alerts') renderAlerts();
-    if (HKELIApp.refreshTimer) { clearInterval(HKELIApp.refreshTimer); HKELIApp.refreshTimer = null; }
-    showToast('All portfolio data cleared', 'info');
+    if (HKELIApp.currentView === 'analytics') setupCharts();
+    if (HKELIApp.currentView === 'calendar') renderCalendarView();
+    if (HKELIApp.currentView === 'watchlist') renderWatchlistView();
+    if (HKELIApp.currentView === 'compare') renderCompareView();
+    renderAlertRulesList();
+    updateDbStatusIndicator();
+    updateNotificationBadge();
+
+    showToast('All portfolio data cleared from this browser', 'success');
   }
 
   function downloadBlob(content, mime, filename) {
