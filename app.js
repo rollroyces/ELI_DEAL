@@ -1091,6 +1091,13 @@
   }
   function confirmDeleteDeal() {
     if (!HKELIApp.deletingDealId) return;
+    // Keep a copy so the delete can be undone from a toast.
+    var removed = HKELIApp.data.eliDeals.find(function (d) {
+      return d.id === HKELIApp.deletingDealId;
+    });
+    if (removed) {
+      HKELIApp.lastDeletedDeal = JSON.parse(JSON.stringify(removed));
+    }
     Storage.deleteDeal(HKELIApp.deletingDealId);
     loadDealsIntoState();
     refreshDealViews();
@@ -1099,7 +1106,73 @@
     hideDeleteConfirmation();
     renderDashboard();
     if (HKELIApp.currentView === 'deals') renderDeals();
-    showToast('Deal deleted', 'success');
+    showToastWithUndo('Deal deleted', 'success');
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Undo toast
+  // ──────────────────────────────────────────────────────────────────
+  var UNDO_WINDOW_MS = 8000;
+
+  /**
+   * Toast with an optional Undo button that stays live for
+   * UNDO_WINDOW_MS, then greys out rather than disappearing (so a late
+   * click tells you it's too late instead of silently doing nothing).
+   */
+  function showToastWithUndo(message, type) {
+    type = type || 'info';
+    var title = ({ success: 'Success', error: 'Error', warning: 'Warning' })[type] || 'Notification';
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+    var toastId = 'toast-' + Date.now();
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.id = toastId;
+    toast.innerHTML =
+      '<div class="toast-header">' +
+        '<span class="toast-title">' + title + '</span>' +
+        '<button class="toast-close" type="button" aria-label="Dismiss">×</button>' +
+      '</div>' +
+      '<p class="toast-message">' + message + '</p>' +
+      '<button class="toast-undo" type="button">Undo</button>';
+    container.appendChild(toast);
+
+    var undoBtn = toast.querySelector('.toast-undo');
+    var timer = setTimeout(function () {
+      if (!undoBtn) return;
+      undoBtn.disabled = true;
+      undoBtn.textContent = 'Undo expired';
+    }, UNDO_WINDOW_MS);
+
+    undoBtn.addEventListener('click', function () {
+      if (undoBtn.disabled) return;
+      clearTimeout(timer);
+      var deal = HKELIApp.lastDeletedDeal;
+      if (deal) {
+        Storage.addDeal(deal);
+        loadDealsIntoState();
+        reassignELIIds();
+        refreshDealViews();
+        renderDashboard();
+        if (HKELIApp.currentView === 'deals') renderDeals();
+        HKELIApp.lastDeletedDeal = null;
+        showToast('Deal restored', 'success');
+      }
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    });
+
+    toast.querySelector('.toast-close').addEventListener('click', function () {
+      clearTimeout(timer);
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    });
+
+    setTimeout(function () {
+      if (!toast.parentNode) return;
+      toast.classList.add('removing');
+      setTimeout(function () {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, UNDO_WINDOW_MS + 2500);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1332,6 +1405,132 @@
 
     if (typeof updateRiskAnalytics === 'function') updateRiskAnalytics();
     renderMaxDrawdownList();
+    renderPortfolioHistoryChart();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Portfolio value over time
+  // Rebuilds a portfolio-level series from the per-symbol daily
+  // snapshots in price_history. Each historical price is valued through
+  // the same formula the app uses today, so the line is comparable
+  // with the live current value.
+  // ──────────────────────────────────────────────────────────────────
+  function renderPortfolioHistoryChart() {
+    var canvas = document.getElementById('portfolio-history-chart');
+    var emptyEl = document.getElementById('portfolio-history-empty');
+    if (!canvas || typeof Db === 'undefined') return;
+    var rangeEl = document.getElementById('portfolio-history-range');
+    var days = rangeEl ? (parseInt(rangeEl.value, 10) || 90) : 90;
+    var since = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    var deals = HKELIApp.data.eliDeals || [];
+    if (!deals.length) {
+      if (HKELIApp.charts.portfolioHistory) { HKELIApp.charts.portfolioHistory.destroy(); HKELIApp.charts.portfolioHistory = null; }
+      if (emptyEl) emptyEl.classList.remove('hidden');
+      return;
+    }
+
+    var symbols = [];
+    deals.forEach(function (d) {
+      (d.underlyingAssets || []).forEach(function (a) {
+        if (a.symbol && symbols.indexOf(a.symbol) === -1) symbols.push(a.symbol);
+      });
+    });
+
+    Db.getPriceHistory(symbols, { since: since, limit: 2000 }).then(function (history) {
+      // Union of all dates, ascending.
+      var dateSet = {};
+      Object.keys(history).forEach(function (sym) {
+        (history[sym] || []).forEach(function (h) {
+          dateSet[new Date(h.timestamp).toISOString().slice(0, 10)] = true;
+        });
+      });
+      var dates = Object.keys(dateSet).sort();
+      if (dates.length < 2) {
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (canvas.parentNode) canvas.parentNode.style.display = 'none';
+        return;
+      }
+      if (emptyEl) emptyEl.classList.add('hidden');
+      if (canvas.parentNode) canvas.parentNode.style.display = '';
+
+      // Per-symbol lookup by date so we can value each deal on that date.
+      var bySymDate = {};
+      Object.keys(history).forEach(function (sym) {
+        bySymDate[sym] = {};
+        (history[sym] || []).forEach(function (h) {
+          bySymDate[sym][new Date(h.timestamp).toISOString().slice(0, 10)] = h.price;
+        });
+      });
+
+      // Value the whole portfolio on each date.
+      var portfolioSeries = dates.map(function (date) {
+        var total = 0;
+        deals.forEach(function (deal) {
+          (deal.underlyingAssets || []).forEach(function (a) {
+            var px = (bySymDate[a.symbol] || {})[date];
+            if (typeof px !== 'number') return;
+            var effShares = (deal.purchasePrice || 0) / (a.strikePrice || 1);
+            total += px * effShares * (a.weight || 0);
+          });
+        });
+        return total;
+      });
+
+      // Cost basis line so the fill between the two is readable.
+      var basis = deals.reduce(function (s, d) { return s + (d.purchasePrice || 0); }, 0);
+
+      if (HKELIApp.charts.portfolioHistory) HKELIApp.charts.portfolioHistory.destroy();
+      HKELIApp.charts.portfolioHistory = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Portfolio value',
+              data: portfolioSeries,
+              borderColor: '#4fc3f7',
+              backgroundColor: 'rgba(79,195,247,0.12)',
+              fill: true,
+              tension: 0.25,
+              pointRadius: dates.length > 45 ? 0 : 3,
+              borderWidth: 2
+            },
+            {
+              label: 'Cost basis',
+              data: dates.map(function () { return basis; }),
+              borderColor: 'rgba(167,139,250,0.75)',
+              borderDash: [6, 5],
+              borderWidth: 1.5,
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            y: {
+              ticks: { callback: function (v) { return formatCurrency(v); } },
+              title: { display: true, text: 'Mark-to-market value' }
+            },
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } }
+          },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }).catch(function (e) {
+      console.warn('portfolio history chart failed', e);
+    });
+  }
+
+  function setupPortfolioHistoryRange() {
+    var sel = document.getElementById('portfolio-history-range');
+    if (!sel || sel.dataset.bound) return;
+    sel.dataset.bound = '1';
+    sel.addEventListener('change', renderPortfolioHistoryChart);
   }
 
   // Per-deal max-drawdown list (reads price_history from SQLite)
@@ -2150,8 +2349,18 @@
         'Status': deal.status,
         'Current Value': deal.currentValue,
         'P&L': deal.pnl,
+        'Tags': (deal.tags || []).join('|'),
+        // Full underlying payload so a CSV round-trip is lossless.
+        // Format: SYMBOL|NAME|strike|barrier|weight|price  (grouped by ';')
         'Underlying Assets': (deal.underlyingAssets || []).map(function (a) {
-          return a.symbol + ':' + a.name + ':' + a.weight;
+          return [
+            a.symbol,
+            a.name,
+            a.strikePrice,
+            a.barrierLevel,
+            a.weight,
+            a.currentPrice
+          ].join('|');
         }).join(';')
       };
     });
@@ -2167,41 +2376,335 @@
     showToast('Portfolio data exported as JSON', 'success');
   }
 
+  // ──────────────────────────────────────────────────────────────────
+  // Print summary — builds a clean sheet and hands it to the browser's
+  // print dialog, so "Print → Save as PDF" produces a usable document.
+  // ──────────────────────────────────────────────────────────────────
+  function buildPrintSummary() {
+    var deals = HKELIApp.data.eliDeals || [];
+    var investment = deals.reduce(function (s, d) { return s + (d.purchasePrice || 0); }, 0);
+    var value = deals.reduce(function (s, d) { return s + (d.currentValue || 0); }, 0);
+    var pnl = value - investment;
+    var pnlPct = investment > 0 ? (pnl / investment) * 100 : 0;
+    var health = (typeof Health !== 'undefined' && deals.length)
+      ? Health.portfolioHealth(deals) : null;
+
+    var rows = deals.map(function (d) {
+      var barrier = calculateBarrierDistance(d);
+      return '<tr>'
+        + '<td>' + escapeHtml(d.dealName) + '</td>'
+        + '<td>' + escapeHtml(d.issuer || '—') + '</td>'
+        + '<td>' + formatCurrency(d.purchasePrice) + '</td>'
+        + '<td>' + formatCurrency(d.currentValue) + '</td>'
+        + '<td>' + (d.pnl >= 0 ? '+' : '') + formatCurrency(d.pnl) + '</td>'
+        + '<td>' + escapeHtml(d.status) + '</td>'
+        + '<td>' + barrier.percentage.toFixed(0) + '%</td>'
+        + '</tr>';
+    }).join('');
+
+    var holdings = deals.map(function (d) {
+      return (d.underlyingAssets || []).map(function (a) {
+        return '<tr>'
+          + '<td>' + escapeHtml(d.dealName) + '</td>'
+          + '<td>' + escapeHtml(a.symbol) + '</td>'
+          + '<td>' + escapeHtml(a.name || '') + '</td>'
+          + '<td>' + formatCurrency(a.strikePrice) + '</td>'
+          + '<td>' + formatCurrency(a.barrierLevel) + '</td>'
+          + '<td>' + formatCurrency(a.currentPrice) + '</td>'
+          + '</tr>';
+      }).join('');
+    }).join('');
+
+    return '<h1>HK ELI Portfolio Summary</h1>'
+      + '<p class="print-meta">Generated ' + new Date().toLocaleString()
+      + ' (HKT) · ' + deals.length + ' deal(s) · '
+      + 'prices ' + (HKELIApp.data.apiStatus.lastSuccessfulRefresh
+          ? new Date(HKELIApp.data.apiStatus.lastSuccessfulRefresh).toLocaleString()
+          : 'unknown')
+      + '</p>'
+      + '<h2>Summary</h2>'
+      + '<table><tbody>'
+      + '<tr><th>Total invested</th><td>' + formatCurrency(investment) + '</td></tr>'
+      + '<tr><th>Current value</th><td>' + formatCurrency(value) + '</td></tr>'
+      + '<tr><th>Unrealised P&amp;L</th><td>' + (pnl >= 0 ? '+' : '') + formatCurrency(pnl)
+      + ' (' + (pnl >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%)</td></tr>'
+      + (health ? '<tr><th>Portfolio health</th><td>' + health.total + '/100 (grade ' + health.grade + ')</td></tr>' : '')
+      + '</tbody></table>'
+      + '<h2>Deals</h2>'
+      + '<table><thead><tr><th>Deal</th><th>Issuer</th><th>Invested</th><th>Value</th>'
+      + '<th>P&amp;L</th><th>Status</th><th>Barrier</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + '<h2>Underlying holdings</h2>'
+      + '<table><thead><tr><th>Deal</th><th>Symbol</th><th>Name</th><th>Strike</th>'
+      + '<th>Barrier</th><th>Current</th></tr></thead><tbody>' + holdings + '</tbody></table>'
+      + '<h2>Disclaimer</h2>'
+      + '<p class="print-meta">For portfolio-tracking and educational purposes only. '
+      + 'Not investment advice. Market data may be delayed or inaccurate.</p>';
+  }
+
+  function printSummary() {
+    var deals = HKELIApp.data.eliDeals || [];
+    if (!deals.length) { showToast('Nothing to print — no deals yet', 'warning'); return; }
+    var el = document.getElementById('print-summary');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'print-summary';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = buildPrintSummary();
+    document.body.classList.add('printing-portfolio');
+    // Let layout settle before opening the dialog.
+    setTimeout(function () {
+      window.print();
+      setTimeout(function () {
+        document.body.classList.remove('printing-portfolio');
+      }, 400);
+    }, 60);
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // CSV import — header mapping, lossless round-trip, safe merge
+  // ──────────────────────────────────────────────────────────────────
+
+  // Accepted spellings for each field, so a hand-edited CSV or a
+  // differently-cased export still imports without editing.
+  var CSV_FIELD_ALIASES = {
+    dealName:       ['Deal Name', 'Name', 'Deal'],
+    investmentDate: ['Investment Date', 'Issue Date', 'Start Date'],
+    maturityDate:   ['Maturity Date', 'Maturity', 'End Date'],
+    nominalAmount:  ['Nominal Amount', 'Nominal', 'Face Value'],
+    purchasePrice:  ['Purchase Price', 'Issue Price', 'Invested'],
+    numberOfStocks: ['Number of Stocks', 'Stocks', 'Legs'],
+    couponRate:     ['Coupon Rate', 'Coupon', 'Coupon %'],
+    settlementMethod: ['Settlement Method', 'Settlement'],
+    issuer:         ['Issuer', 'Bank'],
+    status:         ['Status'],
+    currentValue:   ['Current Value', 'Value', 'Market Value'],
+    pnl:            ['P&L', 'P/L', 'Profit', 'Gain'],
+    tags:           ['Tags', 'Labels'],
+    underlyingAssets: ['Underlying Assets', 'Underlyings', 'Symbols', 'Basket']
+  };
+
+  // Find the first header in `headers` matching any alias for `field`
+  // (case-insensitive).
+  function matchHeader(headers, field) {
+    var aliases = (CSV_FIELD_ALIASES[field] || [field]).map(function (a) {
+      return String(a).toLowerCase();
+    });
+    for (var i = 0; i < headers.length; i++) {
+      if (aliases.indexOf(String(headers[i]).trim().toLowerCase()) !== -1) return headers[i];
+    }
+    return null;
+  }
+
+  // Parse the 'Underlying Assets' cell.
+  // Current format: SYMBOL|NAME|strike|barrier|weight|price  (';'-joined)
+  // Legacy format : SYMBOL:name:weight  — still accepted. It carries no
+  //                 strike or barrier, so those come back null and the
+  //                 caller decides what to do (see buildDealsFromCsvRows).
+  function parseUnderlyingCell(cell) {
+    if (!cell) return [];
+    return String(cell).split(';').map(function (chunk) {
+      chunk = String(chunk).trim();
+      if (!chunk) return null;
+      var isLegacy = chunk.indexOf('|') === -1;
+      var parts = (isLegacy ? chunk.split(':') : chunk.split('|'));
+      var sym = String(parts[0] || '').trim();
+      if (!sym) return null;
+      var meta = (HKELIApp.data.hkStocks || []).find(function (s) {
+        return s.symbol.toUpperCase() === sym.toUpperCase();
+      });
+      var num = function (v) { var n = parseFloat(v); return isFinite(n) ? n : null; };
+
+      if (isLegacy) {
+        // SYMBOL:name:weight — no strike/barrier/price information.
+        return {
+          symbol: sym,
+          name: (parts[1] || (meta && meta.name) || sym).trim(),
+          strikePrice: null,
+          barrierLevel: null,
+          weight: num(parts[2]),
+          currentPrice: null,
+          __incomplete: true
+        };
+      }
+
+      return {
+        symbol: sym,
+        name: (parts[1] || (meta && meta.name) || sym).trim(),
+        strikePrice: num(parts[2]),
+        barrierLevel: num(parts[3]),
+        weight: num(parts[4]),
+        currentPrice: num(parts[5]),
+        __incomplete: num(parts[2]) == null
+      };
+    }).filter(Boolean);
+  }
+
+  /**
+   * Repair underlyings the CSV didn't fully specify.
+   * Strike/barrier are required by the payoff math, so an incomplete row
+   * gets strike = price and barrier = 80% of price, and the deal is
+   * counted in `issues` so the UI can warn rather than quietly lie.
+   */
+  function normalizeImportedAssets(assets) {
+    var repaired = 0;
+    assets.forEach(function (a) {
+      if (a.strikePrice == null) {
+        var ref = a.currentPrice;
+        if (ref == null || ref <= 0) ref = 100;   // nothing usable — flag it
+        a.strikePrice = ref;
+        a.barrierLevel = a.barrierLevel != null ? a.barrierLevel : ref * 0.8;
+        a.currentPrice = a.currentPrice != null ? a.currentPrice : ref;
+        repaired++;
+      }
+    });
+    return repaired;
+  }
+
+  /** Turn parsed CSV rows into deals. Reports what it couldn't read. */
+  function buildDealsFromCsvRows(rows) {
+    var headers = Object.keys(rows[0] || {});
+    var col = {};
+    Object.keys(CSV_FIELD_ALIASES).forEach(function (field) {
+      col[field] = matchHeader(headers, field);
+    });
+
+    var issues = [];
+    if (!col.dealName) issues.push('no "Deal Name" column found');
+    if (!col.underlyingAssets) issues.push('no "Underlying Assets" column — deals would have no holdings');
+
+    var today = new Date().toISOString().split('T')[0];
+    var oneYear = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+    var incompleteAssets = 0;
+
+    var deals = rows.map(function (row, index) {
+      var num = function (key, fallback) {
+        if (!col[key]) return fallback;
+        var v = parseFloat(row[col[key]]);
+        return isFinite(v) ? v : fallback;
+      };
+      var str = function (key, fallback) {
+        if (!col[key]) return fallback;
+        var v = row[col[key]];
+        return (v === undefined || v === null || v === '') ? fallback : String(v).trim();
+      };
+
+      var declared = num('numberOfStocks', 0);
+      var assets = col.underlyingAssets ? parseUnderlyingCell(row[col.underlyingAssets]) : [];
+      var repaired = normalizeImportedAssets(assets);
+      if (repaired) incompleteAssets += repaired;
+      var n = assets.length || declared || 1;
+      // Fill in missing weights as an equal split across the basket.
+      assets.forEach(function (a) {
+        if (a.weight == null) a.weight = 1 / n;
+        delete a.__incomplete;
+      });
+
+      return {
+        id: 'ELI-HK' + String(index + 1).padStart(3, '0'),
+        dealName: str('dealName', 'Imported Deal ' + (index + 1)),
+        investmentDate: str('investmentDate', today),
+        maturityDate: str('maturityDate', oneYear),
+        nominalAmount: num('nominalAmount', 0),
+        purchasePrice: num('purchasePrice', 0),
+        numberOfStocks: n,
+        couponRate: num('couponRate', 0),
+        settlementMethod: str('settlementMethod', 'Cash Settlement'),
+        issuer: str('issuer', 'Unknown'),
+        status: str('status', 'Active'),
+        currentValue: num('currentValue', 0),
+        pnl: num('pnl', 0),
+        tags: col.tags
+          ? String(row[col.tags] || '').split(/[|;]/).map(function (t) {
+              return t.trim().toLowerCase();
+            }).filter(Boolean)
+          : [],
+        underlyingAssets: assets
+      };
+    });
+
+    if (incompleteAssets) {
+      issues.push(incompleteAssets + ' underlying(s) had no strike/barrier — filled with placeholder values, please review');
+    }
+    return { issues: issues, deals: deals };
+  }
+
   function importCSV(file) {
     var reader = new FileReader();
     reader.onload = function (e) {
+      var result;
       try {
         var parsed = Papa.parse(e.target.result, { header: true, skipEmptyLines: true });
-        if (parsed.errors.length) { showToast('Error parsing CSV', 'error'); return; }
-        var imported = parsed.data.map(function (row, index) {
-          return {
-            id: 'ELI-HK' + String(index + 1).padStart(3, '0'),
-            dealName: row['Deal Name'] || 'Imported Deal',
-            investmentDate: row['Investment Date'] || new Date().toISOString().split('T')[0],
-            maturityDate: row['Maturity Date'] || new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0],
-            nominalAmount: parseFloat(row['Nominal Amount']) || 100000,
-            purchasePrice: parseFloat(row['Purchase Price']) || 98000,
-            numberOfStocks: parseInt(row['Number of Stocks']) || 1,
-            couponRate: parseFloat(row['Coupon Rate']) || 8.0,
-            settlementMethod: row['Settlement Method'] || 'Cash Settlement',
-            issuer: row['Issuer'] || 'Unknown',
-            status: row['Status'] || 'Active',
-            currentValue: parseFloat(row['Current Value']) || 100000,
-            pnl: parseFloat(row['P&L']) || 0,
-            underlyingAssets: [{
-              symbol: '0700.HK', name: 'Tencent Holdings Ltd',
-              currentPrice: 350, strikePrice: 400, barrierLevel: 300, weight: 1.0
-            }]
-          };
-        });
-        Storage.replaceAllDeals(imported);
-        loadDealsIntoState();
-        refreshDealViews();
-        showToast('Imported ' + imported.length + ' deals from CSV', 'success');
-        refreshPrices();
-        renderDashboard();
-        if (HKELIApp.currentView === 'deals') renderDeals();
-      } catch (err) { showToast('Error importing CSV', 'error'); }
+        if (!parsed.data || !parsed.data.length) { showToast('CSV has no data rows', 'error'); return; }
+        result = buildDealsFromCsvRows(parsed.data);
+      } catch (err) {
+        showToast('Error parsing CSV: ' + err.message, 'error');
+        return;
+      }
+
+      if (result.issues.length) {
+        showToast('CSV import: ' + result.issues.join('; '), 'warning');
+      }
+      if (!result.deals.some(function (d) { return d.underlyingAssets.length; })) {
+        if (!confirm(
+          'None of the ' + result.deals.length + ' row(s) had readable underlyings.\n\n' +
+          'The CSV needs an "Underlying Assets" column like:\n' +
+          '  0700.HK|Tencent|380|304|0.5|412\n\n' +
+          'Cancel to abort the import.'
+        )) return;
+      }
+
+      // Never silently wipe existing deals — merge by deal name.
+      var existing = Storage.getDeals();
+      var incoming = result.deals;
+      var dupes = incoming.filter(function (d) {
+        return existing.some(function (x) { return x.dealName === d.dealName; });
+      });
+
+      if (dupes.length) {
+        var update = confirm(
+          'Found ' + dupes.length + ' deal(s) already in your portfolio:\n\n' +
+          dupes.map(function (d) { return '• ' + d.dealName; }).join('\n') +
+          '\n\nOK = update those deals in place' +
+          '\nCancel = skip them and import only the new ones'
+        );
+        if (update) {
+          var merged = existing.map(function (x) {
+            var match = incoming.find(function (d) { return d.dealName === x.dealName; });
+            if (!match) return x;
+            return Object.assign({}, match, {
+              id: x.id,
+              createdAt: x.createdAt,
+              underlyingAssets: match.underlyingAssets.map(function (a) {
+                var prev = (x.underlyingAssets || []).find(function (p) {
+                  return p.symbol === a.symbol;
+                });
+                // Keep the live price already on file if the CSV had none.
+                return (prev && !a.currentPrice)
+                  ? Object.assign({}, a, { currentPrice: prev.currentPrice })
+                  : a;
+              })
+            });
+          });
+          Storage.replaceAllDeals(merged);
+          showToast('Updated ' + dupes.length + ' deal(s) from CSV', 'success');
+        } else {
+          var have = {};
+          existing.forEach(function (x) { have[x.dealName] = true; });
+          var toAdd = incoming.filter(function (d) { return !have[d.dealName]; });
+          if (!toAdd.length) { showToast('Nothing new to import', 'info'); return; }
+          Storage.replaceAllDeals(existing.concat(toAdd));
+          showToast('Imported ' + toAdd.length + ' new deal(s)', 'success');
+        }
+      } else {
+        Storage.replaceAllDeals(existing.concat(incoming));
+        showToast('Imported ' + incoming.length + ' deal(s) from CSV', 'success');
+      }
+
+      loadDealsIntoState();
+      reassignELIIds();
+      refreshDealViews();
+      refreshPrices();
     };
     reader.readAsText(file);
   }
@@ -2503,6 +3006,7 @@
     on('manual-refresh', 'click', function (e) { e.preventDefault(); performManualRefresh(); });
     on('export-csv', 'click', function (e) { e.preventDefault(); exportCSV(); });
     on('export-json', 'click', function (e) { e.preventDefault(); exportJSON(); });
+    on('print-summary-btn', 'click', function (e) { e.preventDefault(); printSummary(); });
     on('save-to-db', 'click', function (e) { e.preventDefault(); saveDealsToDatabase(); });
     on('load-from-db', 'click', function (e) { e.preventDefault(); loadDealsFromDatabase(); });
     on('save-settings', 'click', function (e) { e.preventDefault(); applySettings(); });
@@ -2580,6 +3084,7 @@
 
     setupPayoffEventListeners();
     setupCalendarEventListeners();
+    setupPortfolioHistoryRange();
     setupWatchlistListeners();
     setupCompareListeners();
     setupThemeToggle();
