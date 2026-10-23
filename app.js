@@ -618,7 +618,7 @@
       if (viewName === 'analytics') setTimeout(setupCharts, 100);
       else if (viewName === 'deals') renderDeals();
       else if (viewName === 'alerts') { renderAlerts(); setupAlertRuleUI(); refreshAlertRuleTargets(); renderAlertRulesList(); }
-      else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); renderManualPriceEntries(); }
+      else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); renderManualPriceEntries(); updateNotificationSettingsUI(); }
       else if (viewName === 'dashboard') renderDashboard();
       else if (viewName === 'payoff') { populatePayoffDealSelect(); renderPayoffView(); }
       else if (viewName === 'scenarios') renderScenariosView();
@@ -1810,13 +1810,118 @@
       });
     });
     HKELIApp.data.alerts = newAlerts;
+    // Acknowledge-aware: an alert the user already dealt with keeps its
+    // read state across the rebuild, so the badge can actually drop to
+    // zero instead of snapping back up on the next price tick.
+    if (typeof AlertRules !== 'undefined') {
+      AlertRules.applyAcknowledgements(HKELIApp.data.alerts);
+    }
+    maybeNotifyForNewAlerts(HKELIApp.data.alerts);
     updateNotificationBadge();
   }
 
   // ──────────────────────────────────────────────────────────────────
+  // Browser notifications — opt-in, fires once per unread alert while
+  // the tab is in the background. Without this, every alert the app
+  // builds is invisible unless you're already looking at the tab.
+  // ──────────────────────────────────────────────────────────────────
+  function notificationsSupported() {
+    return typeof Notification !== 'undefined';
+  }
+
+  function notificationsGranted() {
+    return notificationsSupported() && Notification.permission === 'granted';
+  }
+
+  /** Ask for permission. Must be called from a user gesture. */
+  async function requestNotificationPermission() {
+    if (!notificationsSupported()) {
+      showToast('This browser does not support notifications', 'warning');
+      return 'unsupported';
+    }
+    if (Notification.permission === 'granted') return 'granted';
+    if (Notification.permission === 'denied') {
+      showToast('Notifications are blocked for this site — enable them in your browser settings', 'warning');
+      return 'denied';
+    }
+    var result = await Notification.requestPermission();
+    updateNotificationSettingsUI();
+    if (result === 'granted') {
+      showToast('Desktop notifications enabled', 'success');
+      try { new Notification('HK ELI', { body: 'Alerts will appear here while the tab is in the background.' }); }
+      catch (e) { /* some browsers require a service worker; ignore */ }
+    } else {
+      showToast('Notifications not enabled', 'info');
+    }
+    return result;
+  }
+
+  function updateNotificationSettingsUI() {
+    var btn = document.getElementById('enable-notifications');
+    var note = document.getElementById('notification-permission-note');
+    if (!btn) return;
+    if (!notificationsSupported()) {
+      btn.disabled = true;
+      if (note) note.textContent = 'This browser does not support the Notifications API.';
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-check"></i> Notifications enabled';
+      if (note) note.textContent = 'Alerts fire even when this tab is in the background.';
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      btn.disabled = true;
+      if (note) note.textContent = 'Blocked for this site. Re-enable it in your browser\u2019s site settings.';
+      return;
+    }
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-bell"></i> Enable desktop notifications';
+    if (note) note.textContent = 'Get alerted about barrier breaches and custom rules even when this tab is in the background.';
+  }
+
+  /**
+   * Fire a desktop notification for each alert that is unread AND that
+   * we haven't notified about in this session. No-op when the tab is
+   * visible (you're already looking at it) or permission wasn't granted.
+   */
+  function maybeNotifyForNewAlerts(alerts) {
+    if (!notificationsGranted()) return;
+    // Already watching the tab — don't be annoying.
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+    var fresh = (alerts || []).filter(function (a) { return !a.read && !a.__notified; });
+    if (!fresh.length) return;
+    // Cap the burst so one bad refresh can't spam 20 notifications.
+    fresh.slice(0, 3).forEach(function (a) {
+      a.__notified = true;
+      try {
+        var n = new Notification('HK ELI — ' + a.type, {
+          body: a.message,
+          tag: a.id,
+          icon: 'assets/icon-192.svg',
+          silent: false
+        });
+        n.onclick = function () {
+          try { window.focus(); } catch (e) {}
+          switchView('alerts');
+          n.close();
+        };
+      } catch (e) { /* service worker-only platforms: skip */ }
+    });
+    if (fresh.length > 3) {
+      try {
+        var more = new Notification('HK ELI — ' + (fresh.length - 3) + ' more alerts', {
+          body: 'Open the app to review the rest.',
+          tag: 'hk-eli-more'
+        });
+        more.onclick = function () { try { window.focus(); } catch (e) {} switchView('alerts'); };
+      } catch (e) { /* ignore */ }
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   // Custom alert rules (js/alerts.js)
-  // Rules are stored in settings so they survive a reload and travel
-  // with a JSON backup.
   // ──────────────────────────────────────────────────────────────────
   function getAlertRules() {
     var s = getCurrentSettings();
@@ -1862,17 +1967,44 @@
     var meta = (typeof AlertRules !== 'undefined') ? AlertRules.TYPE_META[type] : null;
     if (!meta) return;
     var opts = ['<option value="">— target —</option>'];
+    var seenSymbols = {};
+    var seenTags = {};
+    var seenSectors = {};
+
     if (meta.scope === 'symbol') {
-      var seen = {};
       HKELIApp.data.eliDeals.forEach(function (d) {
         (d.underlyingAssets || []).forEach(function (a) {
-          if (a.symbol && !seen[a.symbol]) {
-            seen[a.symbol] = true;
+          if (a.symbol && !seenSymbols[a.symbol]) {
+            seenSymbols[a.symbol] = true;
             opts.push('<option value="' + escapeHtml(a.symbol) + '">' + escapeHtml(a.symbol) + '</option>');
           }
         });
       });
+    } else if (meta.scope === 'tag') {
+      HKELIApp.data.eliDeals.forEach(function (d) {
+        (d.tags || []).forEach(function (t) {
+          if (!seenTags[t]) {
+            seenTags[t] = true;
+            opts.push('<option value="' + escapeHtml(t) + '">#' + escapeHtml(t) + '</option>');
+          }
+        });
+      });
+      if (!opts.length) opts.push('<option value="" disabled>(no tags in use)</option>');
+    } else if (meta.scope === 'sector') {
+      if (typeof Sectors !== 'undefined') {
+        HKELIApp.data.eliDeals.forEach(function (d) {
+          (d.underlyingAssets || []).forEach(function (a) {
+            var s = Sectors.lookup(a.symbol).sector;
+            if (s && !seenSectors[s]) {
+              seenSectors[s] = true;
+              opts.push('<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>');
+            }
+          });
+        });
+      }
+      if (opts.length === 1) opts.push('<option value="" disabled>(no sectors in use)</option>');
     } else {
+      // deal scope — offer the whole portfolio plus each deal
       opts.push('<option value="portfolio">Whole portfolio</option>');
       HKELIApp.data.eliDeals.forEach(function (d) {
         opts.push('<option value="' + escapeHtml(d.id) + '">' + escapeHtml(d.dealName) + '</option>');
@@ -1880,7 +2012,7 @@
     }
     targetSel.innerHTML = opts.join('');
     var valEl = document.getElementById('alert-rule-value');
-    if (valEl) valEl.placeholder = meta.unit === 'days' ? 'days' : (meta.unit === '/100' ? 'score' : 'HK$');
+    if (valEl) valEl.placeholder = meta.unit === 'days' ? 'days' : (meta.unit === '/100' ? 'score' : (meta.unit === 'HK$' ? 'HK$' : ''));
   }
 
   function renderAlertRulesList() {
@@ -1961,12 +2093,47 @@
         '</div></div>';
       return;
     }
-    list.innerHTML = HKELIApp.data.alerts.map(function (a) {
-      return '<div class="alert-item severity-' + a.severity + '">' +
-        '<div class="alert-icon"><i class="fas fa-exclamation-' + (a.severity === 'critical' ? 'triangle' : 'circle') + '"></i></div>' +
-        '<div class="alert-content"><h4>' + a.type + '</h4><p>' + a.message + '</p><span class="alert-time">' + formatTimeAgo(a.timestamp) + '</span></div>' +
+    var unread = (typeof AlertRules !== 'undefined')
+      ? AlertRules.unreadCount(HKELIApp.data.alerts)
+      : HKELIApp.data.alerts.length;
+
+    var rows = HKELIApp.data.alerts.map(function (a) {
+      var esc = typeof AlertRules !== 'undefined' ? AlertRules.escapeHtml : escapeHtml;
+      var icon = a.severity === 'critical' ? 'triangle' : (a.severity === 'warning' ? 'exclamation' : 'circle');
+      return '<div class="alert-item severity-' + a.severity + (a.read ? ' read' : '') + '">' +
+        '<div class="alert-icon"><i class="fas fa-exclamation-' + icon + '"></i></div>' +
+        '<div class="alert-content">' +
+          '<h4>' + esc(a.type) + (a.custom ? ' <span class="badge badge-par">rule</span>' : '') + '</h4>' +
+          '<p>' + esc(a.message) + '</p>' +
+          '<span class="alert-time">' + formatTimeAgo(a.timestamp) + '</span>' +
+        '</div>' +
+        '<div class="alert-actions">' +
+          (a.read
+            ? '<span class="alert-acked">Acknowledged</span>'
+            : '<button type="button" class="alert-ack-btn" data-ack-id="' + esc(a.id) + '">Acknowledge</button>') +
+        '</div>' +
       '</div>';
     }).join('');
+
+    list.innerHTML =
+      '<div class="alert-toolbar">' +
+        '<span class="alert-toolbar-count">' + unread + ' unread of ' + HKELIApp.data.alerts.length + '</span>' +
+        '<div class="alert-toolbar-actions">' +
+          '<button type="button" class="btn btn--secondary btn--sm" id="ack-all-btn">Acknowledge all</button>' +
+          '<button type="button" class="btn btn--outline btn--sm" id="reset-acks-btn">Reset</button>' +
+          '<button type="button" class="btn btn--outline btn--sm" id="clear-alerts-btn">Clear list</button>' +
+        '</div>' +
+      '</div>' + rows;
+
+    list.querySelectorAll('[data-ack-id]').forEach(function (b) {
+      b.addEventListener('click', function () { acknowledgeAlert(b.dataset.ackId); });
+    });
+    var ackAll = document.getElementById('ack-all-btn');
+    if (ackAll) ackAll.addEventListener('click', acknowledgeAllAlerts);
+    var resetBtn = document.getElementById('reset-acks-btn');
+    if (resetBtn) resetBtn.addEventListener('click', resetAlertAcks);
+    var clearBtn = document.getElementById('clear-alerts-btn');
+    if (clearBtn) clearBtn.addEventListener('click', clearAllAlerts);
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -2504,7 +2671,47 @@
 
   function updateNotificationBadge() {
     var badge = document.getElementById('notification-count');
-    if (badge) badge.textContent = HKELIApp.data.alerts.length;
+    if (!badge) return;
+    // Count only unacknowledged alerts — acknowledging one must visibly
+    // move the number, otherwise "Clear All" looks broken.
+    var n = (typeof AlertRules !== 'undefined')
+      ? AlertRules.unreadCount(HKELIApp.data.alerts)
+      : HKELIApp.data.alerts.length;
+    badge.textContent = n;
+    badge.classList.toggle('zero', n === 0);
+    var bell = document.getElementById('notifications-bell');
+    if (bell) bell.setAttribute('aria-label', n === 1 ? '1 unread alert' : n + ' unread alerts');
+  }
+
+  /** Acknowledge one alert by id and re-render. */
+  function acknowledgeAlert(alertId) {
+    if (typeof AlertRules === 'undefined') return;
+    AlertRules.acknowledge(alertId);
+    AlertRules.applyAcknowledgements(HKELIApp.data.alerts);
+    renderAlerts();
+    updateNotificationBadge();
+  }
+
+  /** Acknowledge every currently-visible alert. */
+  function acknowledgeAllAlerts() {
+    if (typeof AlertRules === 'undefined') return;
+    var ids = HKELIApp.data.alerts.map(function (a) { return a.id; });
+    if (!ids.length) { showToast('No alerts to acknowledge', 'info'); return; }
+    AlertRules.acknowledgeAll(ids);
+    AlertRules.applyAcknowledgements(HKELIApp.data.alerts);
+    renderAlerts();
+    updateNotificationBadge();
+    showToast('Acknowledged ' + ids.length + ' alert(s)', 'success');
+  }
+
+  /** Bring acknowledged alerts back (they can fire again). */
+  function resetAlertAcks() {
+    if (typeof AlertRules === 'undefined') return;
+    AlertRules.resetAcknowledgements();
+    AlertRules.applyAcknowledgements(HKELIApp.data.alerts);
+    renderAlerts();
+    updateNotificationBadge();
+    showToast('Alerts reset — acknowledged items will fire again', 'info');
   }
   function toggleAlertPopover() {
     var pop = document.getElementById('alert-popover');
@@ -2521,6 +2728,10 @@
       pop.classList.add('hidden');
     }
   }
+  // "Clear list" only empties the current view — it does NOT acknowledge,
+  // because alerts are rebuilt from live state on the next price tick.
+  // The header button acknowledges instead, which is what actually clears
+  // the badge.
   function clearAllAlerts() {
     HKELIApp.data.alerts = [];
     updateNotificationBadge();
@@ -3259,7 +3470,8 @@
     on('add-deal-form', 'submit', handleDealFormSubmit);
     on('number-of-stocks', 'change', updateStockConfiguration);
     on('notifications-bell', 'click', function (e) { e.preventDefault(); e.stopPropagation(); toggleAlertPopover(); });
-    on('clear-alerts', 'click', function (e) { e.preventDefault(); clearAllAlerts(); });
+    on('clear-alerts', 'click', function (e) { e.preventDefault(); acknowledgeAllAlerts(); });
+    on('enable-notifications', 'click', function (e) { e.preventDefault(); requestNotificationPermission(); });
     on('manual-refresh', 'click', function (e) { e.preventDefault(); performManualRefresh(); });
     on('export-csv', 'click', function (e) { e.preventDefault(); exportCSV(); });
     on('export-json', 'click', function (e) { e.preventDefault(); exportJSON(); });
