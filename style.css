@@ -2918,3 +2918,123 @@ input[type="range"] {
   margin: 0 0 20px;
   border-radius: 14px;
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Theme 10 additions: undo toast, print stylesheet.
+   ────────────────────────────────────────────────────────────────── */
+
+/* Undo button inside a toast */
+.toast-undo {
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.toast-undo:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: var(--color-btn-primary-text);
+}
+.toast-undo:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+.toast-undo:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Print: hide the app chrome, show only the data. Printing the
+   Portfolio Analytics or Dashboard view gives a usable summary. */
+@media print {
+  :root {
+    /* Force the light palette so prints don't come out dark. */
+    --color-background: #ffffff;
+    --color-surface: #ffffff;
+    --color-text: #111111;
+    --color-text-secondary: #444444;
+    --color-border: #cccccc;
+  }
+
+  .app-header,
+  .sidebar,
+  .sidebar-backdrop,
+  .sidebar-toggle,
+  .settings-grid,
+  .toast-container,
+  .theme-toggle,
+  .btn,
+  .deal-actions,
+  .modal,
+  .empty-illustration {
+    display: none !important;
+  }
+
+  body,
+  .app-container,
+  .main-layout,
+  .main-content {
+    background: #fff !important;
+    color: #111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .view { display: none !important; }
+  .view.active { display: block !important; }
+
+  .card,
+  .summary-card,
+  .deal-card,
+  .analytics-card {
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .view-header h1 { font-size: 20pt; margin-bottom: 4pt; }
+  .view-header p  { font-size: 10pt; color: #555; }
+
+  /* Charts are canvases — they print fine, but keep them from being
+     stretched by the flex/grid layout. */
+  .chart-container { height: 260px !important; break-inside: avoid; }
+  canvas { max-width: 100% !important; }
+
+  .payoff-table { font-size: 9pt; }
+  .payoff-table th,
+  .payoff-table td { padding: 4pt 6pt; }
+
+  a[href]::after { content: ""; }
+}
+
+@media print {
+  /* Print just the summary block that the print button injects. */
+  body.printing-portfolio > *:not(#print-summary) { display: none !important; }
+  #print-summary {
+    display: block !important;
+    font-size: 11pt;
+    color: #111;
+  }
+  #print-summary h1 { font-size: 18pt; margin-bottom: 2pt; }
+  #print-summary h2 { font-size: 12pt; margin: 14pt 0 4pt; border-bottom: 1pt solid #999; }
+  #print-summary table { width: 100%; border-collapse: collapse; margin-top: 6pt; }
+  #print-summary th, #print-summary td {
+    border: 0.5pt solid #bbb;
+    padding: 3pt 5pt;
+    text-align: left;
+  }
+  #print-summary .print-meta { color: #666; font-size: 9pt; margin-bottom: 10pt; }
+}
+
+/* The injected print sheet is only ever shown on paper. */
+#print-summary { display: none; }
