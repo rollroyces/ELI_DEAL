@@ -204,3 +204,47 @@ jobs:
               && echo "  ✓ escapeHtml handles $ch" \
               || { echo "  ✗ escapeHtml missing $ch"; exit 1; }
           done
+  # ── 8. Supply chain: third-party assets must be pinned + SRI ────────
+  # An unversioned CDN script means a breaking upstream release can break
+  # every chart in the app with no code change and no way to bisect it.
+  dep-pinning:
+    name: CDN deps pinned with SRI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every remote <script>/<link> carries a version and an integrity hash
+        run: |
+          set -e
+          python3 - <<'PY'
+          import re, sys
+          src = open('index.html').read()
+          # Remote assets = anything pulling from a CDN.
+          remote = re.findall(r'<(script|link)\b[^>]*\b(?:src|href)="(https?://[^"]+)"[^>]*>', src, re.I)
+          if not remote:
+              print('  ✗ no remote assets found — is index.html malformed?'); sys.exit(1)
+          bad = []
+          for tag, url in remote:
+              # Two pinning styles: npm/jsdelivr uses @x.y.z,
+              # cdnjs embeds the version in the path (/libs/x/6.5.2/).
+              pinned = bool(re.search(r'@v?\d+\.\d+', url)) or \
+                       bool(re.search(r'/ajax/libs/[^/]+/\d+\.\d+', url))
+              # SRI + crossorigin live on the same element as the URL.
+              block = re.search(r'<%s\b[^>]*%s[^>]*>' % (tag, re.escape(url)), src, re.I)
+              blk = block.group(0) if block else ''
+              has_sri = 'integrity=' in blk
+              has_co = 'crossorigin=' in blk
+              ok = pinned and has_sri and has_co
+              print(('  ✓ ' if ok else '  ✗ ') + url.split('/')[-1][:58])
+              if not ok:
+                  why = []
+                  if not pinned: why.append('unpinned version')
+                  if not has_sri: why.append('no integrity')
+                  if not has_co: why.append('no crossorigin')
+                  bad.append(url + '  (' + ', '.join(why) + ')')
+          if bad:
+              print('')
+              print('Unpinned / unverified remote assets:')
+              for b in bad: print('  - ' + b)
+              sys.exit(1)
+          print('  ✓ all %d remote assets are version-pinned with SRI' % len(remote))
+          PY

@@ -3197,16 +3197,59 @@
   }
 
   function clearAllData() {
-    if (!confirm('Clear all portfolio data? This cannot be undone (use Export first if you want a backup).')) return;
-    Storage.replaceAllDeals([]);
+    if (!confirm(
+      'Clear ALL portfolio data?\n\n' +
+      'This erases deals, price history, cached prices, alert rules and\n' +
+      'settings (including any saved Finnhub API key) from this browser.\n' +
+      'It cannot be undone — export first if you want a backup.'
+    )) return;
+
+    // The old path (Storage.replaceAllDeals([])) only touched the `deals`
+    // table. price_history, price_cache and settings — including the
+    // Finnhub API key — survived on disk. Wipe the whole database.
+    if (window.Db && typeof Db.clearAll === 'function') {
+      Db.clearAll().catch(function (e) {
+        console.error('Db.clearAll failed', e);
+        showToast('Database clear failed — some data may remain', 'error');
+      });
+    }
+
+    // localStorage mirrors: deals, settings, price cache, plus the keys
+    // owned by the alert / watchlist / fx modules.
+    [
+      'eli_deals_v1', 'eli_settings_v1', 'eli_price_cache_v1',
+      'eli_watchlist_v1', 'eli_fx_cache_v1', 'eli_alert_acks_v1',
+      'eli_schema_version'
+    ].forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
+    });
+    try { sessionStorage.removeItem('eli_banner_dismissed'); } catch (e) {}
+
+    // In-memory mirrors.
+    HKELIApp.data.eliDeals = [];
     HKELIApp.data.alerts = [];
-    loadDealsIntoState();
-    refreshDealViews();
+    HKELIApp.data.customAlerts = [];
+    HKELIApp.lastDeletedDeal = null;
+    if (HKELIApp.charts) HKELIApp.charts = {};
+
+    // Re-seed the SQLite schema so the app stays usable immediately.
+    if (window.Storage && Storage.refresh) Storage.refresh();
+
+    if (HKELIApp.refreshTimer) { clearInterval(HKELIApp.refreshTimer); HKELIApp.refreshTimer = null; }
+
     renderDashboard();
+    refreshDealViews();
     if (HKELIApp.currentView === 'deals') renderDeals();
     if (HKELIApp.currentView === 'alerts') renderAlerts();
-    if (HKELIApp.refreshTimer) { clearInterval(HKELIApp.refreshTimer); HKELIApp.refreshTimer = null; }
-    showToast('All portfolio data cleared', 'info');
+    if (HKELIApp.currentView === 'analytics') setupCharts();
+    if (HKELIApp.currentView === 'calendar') renderCalendarView();
+    if (HKELIApp.currentView === 'watchlist') renderWatchlistView();
+    if (HKELIApp.currentView === 'compare') renderCompareView();
+    renderAlertRulesList();
+    updateDbStatusIndicator();
+    updateNotificationBadge();
+
+    showToast('All portfolio data cleared from this browser', 'success');
   }
 
   function downloadBlob(content, mime, filename) {
