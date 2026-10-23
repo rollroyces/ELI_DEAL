@@ -334,6 +334,7 @@
       });
       persistDeals();
       rebuildAlertsFromState();
+      rebuildCustomAlerts();
 
       var now = Date.now();
       HKELIApp.data.apiStatus.connected = updated > 0 || freshFromCache > 0;
@@ -616,7 +617,7 @@
       HKELIApp.currentView = viewName;
       if (viewName === 'analytics') setTimeout(setupCharts, 100);
       else if (viewName === 'deals') renderDeals();
-      else if (viewName === 'alerts') renderAlerts();
+      else if (viewName === 'alerts') { renderAlerts(); setupAlertRuleUI(); refreshAlertRuleTargets(); renderAlertRulesList(); }
       else if (viewName === 'settings') { updateRefreshDisplay(); updateAPIStatus(); renderManualPriceEntries(); }
       else if (viewName === 'dashboard') renderDashboard();
       else if (viewName === 'payoff') { populatePayoffDealSelect(); renderPayoffView(); }
@@ -1016,10 +1017,76 @@
         detailRow('Purchase Price', formatCurrency(deal.purchasePrice), 'hk-currency') +
         detailRow('Current Value', formatCurrency(deal.currentValue), 'hk-currency') +
         detailRow('P&L', (deal.pnl >= 0 ? '+' : '') + formatCurrency(deal.pnl), deal.pnl >= 0 ? 'positive' : 'negative') +
-      '</div></div></div>';
+      '</div></div></div>' +
+      renderDealNotesBlock(deal) +
+      renderDealAttributionBlock(deal);
     var c = document.getElementById('deal-detail-content');
     if (c) c.innerHTML = html;
+    wireDealNotesSave(dealId);
     showDealDetailModal();
+  }
+
+  // Notes auto-save on blur (and on Ctrl+Enter), so you never lose the
+  // thought you just typed by closing the modal.
+  function wireDealNotesSave(dealId) {
+    var ta = document.getElementById('deal-notes-input');
+    if (!ta) return;
+    ta.addEventListener('blur', function () {
+      if (ta.dataset.dirty !== '1') return;
+      ta.dataset.dirty = '';
+      saveDealNotes(dealId, ta.value);
+    });
+    ta.addEventListener('input', function () { ta.dataset.dirty = '1'; });
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        ta.blur();
+      }
+    });
+  }
+
+  // Notes block inside the deal detail modal — editable inline, saved on blur.
+  function renderDealNotesBlock(deal) {
+    var note = (typeof AlertRules !== 'undefined') ? AlertRules.cleanNote(deal.notes) : (deal.notes || '');
+    var cls = typeof AlertRules !== 'undefined' ? AlertRules.escapeHtml : escapeHtml;
+    return '<div class="detail-section"><h3>Notes</h3>'
+      + '<textarea class="form-control deal-notes-input" id="deal-notes-input" rows="4" '
+      + 'placeholder="Why did you take this deal? What would make you exit?" '
+      + 'aria-label="Deal notes">' + cls(note) + '</textarea>'
+      + '<small class="form-help">Saved automatically when you click away.</small>'
+      + '</div>';
+  }
+
+  // P&L attribution block inside the deal detail modal.
+  function renderDealAttributionBlock(deal) {
+    if (typeof AlertRules === 'undefined') return '';
+    var rows = AlertRules.attributeDealPnl(deal);
+    if (!rows.length) return '';
+    var body = rows.map(function (r) {
+      var cls = r.contribution >= 0 ? 'positive' : 'negative';
+      return '<div class="attribution-row">'
+        + '<span class="attribution-symbol"><strong>' + escapeHtml(r.symbol) + '</strong></span>'
+        + '<div class="attribution-bar">'
+        + '<div class="attribution-fill ' + cls + '" style="width: ' +
+          Math.min(100, Math.abs(r.pctOfTotal)) + '%"></div>'
+        + '</div>'
+        + '<span class="attribution-value ' + cls + '">'
+        + (r.contribution >= 0 ? '+' : '') + formatCurrency(r.contribution) + '</span>'
+        + '</div>';
+    }).join('');
+    return '<div class="detail-section"><h3>P&amp;L by underlying</h3>'
+      + '<p class="form-help">Settles on the worst leg, but this shows where the move came from.</p>'
+      + body + '</div>';
+  }
+
+  function saveDealNotes(dealId, text) {
+    var clean = (typeof AlertRules !== 'undefined') ? AlertRules.cleanNote(text) : String(text || '');
+    Storage.updateDeal(dealId, { notes: clean });
+    loadDealsIntoState();
+    var deal = HKELIApp.data.eliDeals.find(function (d) { return d.id === dealId; });
+    if (deal) deal.notes = clean;
+    persistDeals();
+    showToast('Notes saved', 'success');
   }
   function detailRow(label, value, cls) {
     return '<div class="detail-item"><span class="detail-label">' + label + '</span>' +
@@ -1048,6 +1115,12 @@
     });
     var tagsEl = form.querySelector('[name="tags"]');
     if (tagsEl) tagsEl.value = (deal.tags || []).join(', ');
+    var notesEl = form.querySelector('[name="notes"]');
+    if (notesEl) {
+      notesEl.value = (typeof AlertRules !== 'undefined')
+        ? AlertRules.cleanNote(deal.notes)
+        : (deal.notes || '');
+    }
     setTimeout(function () {
       updateStockConfiguration();
       setTimeout(function () { populateStockInputsFromDeal(deal); }, 50);
@@ -1279,7 +1352,10 @@
       underlyingAssets: assets,
       currentValue: parseFloat(form.purchasePrice.value),
       pnl: 0,
-      tags: parseTagsInput(form.tags ? form.tags.value : '')
+      tags: parseTagsInput(form.tags ? form.tags.value : ''),
+      notes: (typeof AlertRules !== 'undefined')
+        ? AlertRules.cleanNote(form.notes ? form.notes.value : '')
+        : String((form.notes && form.notes.value) || '').trim()
     };
     if (editId) {
       Storage.updateDeal(editId, payload);
@@ -1406,6 +1482,49 @@
     if (typeof updateRiskAnalytics === 'function') updateRiskAnalytics();
     renderMaxDrawdownList();
     renderPortfolioHistoryChart();
+    renderPnlAttribution();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // P&L attribution by underlying (Analytics)
+  // ──────────────────────────────────────────────────────────────────
+  function renderPnlAttribution() {
+    var el = document.getElementById('pnl-attribution-list');
+    if (!el || typeof AlertRules === 'undefined') return;
+    var deals = HKELIApp.data.eliDeals || [];
+    if (!deals.length) {
+      el.innerHTML = '<p class="form-help">Add deals to see which underlying is driving your P&L.</p>';
+      return;
+    }
+    var rows = AlertRules.attributePortfolioPnl(deals);
+    if (!rows.length) {
+      el.innerHTML = '<p class="form-help">No holdings to attribute yet.</p>';
+      return;
+    }
+    // Scale bars against the largest absolute contribution so the
+    // biggest mover always fills its bar regardless of sign.
+    var maxAbs = rows.reduce(function (m, r) {
+      return Math.max(m, Math.abs(r.contribution));
+    }, 0) || 1;
+
+    var html = rows.map(function (r) {
+      var cls = r.contribution >= 0 ? 'positive' : 'negative';
+      var pct = r.pctOfTotal;
+      var pctLabel = isFinite(pct) ? (pct >= 0 ? '+' : '') + pct.toFixed(0) + '%' : '—';
+      var dealNames = r.deals.map(function (d) { return d.name; }).join(', ');
+      return '<div class="attribution-row" title="' + AlertRules.escapeHtml(dealNames) + '">'
+        + '<span class="attribution-symbol"><strong>' + escapeHtml(r.symbol) + '</strong>'
+        + '<small>' + AlertRules.escapeHtml(r.deals.length > 1 ? r.deals.length + ' deals' : r.deals[0].name) + '</small></span>'
+        + '<div class="attribution-bar">'
+        + '<div class="attribution-fill ' + cls + '" style="width: '
+        + Math.max(2, (Math.abs(r.contribution) / maxAbs) * 100) + '%"></div>'
+        + '</div>'
+        + '<span class="attribution-value ' + cls + '">'
+        + (r.contribution >= 0 ? '+' : '') + formatCurrency(r.contribution) + '</span>'
+        + '<span class="attribution-pct">' + pctLabel + '</span>'
+        + '</div>';
+    }).join('');
+    el.innerHTML = html;
   }
 
   // ──────────────────────────────────────────────────────────────────
@@ -1692,6 +1811,144 @@
     });
     HKELIApp.data.alerts = newAlerts;
     updateNotificationBadge();
+  }
+
+  // ──────────────────────────────────────────────────────────────────
+  // Custom alert rules (js/alerts.js)
+  // Rules are stored in settings so they survive a reload and travel
+  // with a JSON backup.
+  // ──────────────────────────────────────────────────────────────────
+  function getAlertRules() {
+    var s = getCurrentSettings();
+    return Array.isArray(s.alertRules) ? s.alertRules : [];
+  }
+
+  function saveAlertRules(rules) {
+    Storage.setSettings({ alertRules: rules });
+  }
+
+  /** Portfolio-level helpers the rule evaluator needs. */
+  function alertRuleHelpers() {
+    var deals = HKELIApp.data.eliDeals;
+    var portfolioPnl = deals.reduce(function (s, d) { return s + (d.pnl || 0); }, 0);
+    return {
+      portfolioPnl: portfolioPnl,
+      dealHealth: (typeof Health !== 'undefined')
+        ? function (d) { return Health.computeHealth(d, deals); }
+        : null
+    };
+  }
+
+  function rebuildCustomAlerts() {
+    if (typeof AlertRules === 'undefined') return;
+    var rules = getAlertRules();
+    if (!rules.length) return;
+    var fired = AlertRules.evaluateRules(
+      rules, HKELIApp.data.eliDeals, alertRuleHelpers()
+    );
+    // Custom alerts live alongside the built-ins but are kept separate so
+    // clearing built-ins doesn't wipe user rules and vice versa.
+    HKELIApp.data.customAlerts = fired;
+    HKELIApp.data.alerts = HKELIApp.data.alerts.concat(fired);
+    updateNotificationBadge();
+  }
+
+  /** Populate the rule-target dropdown for the currently selected rule type. */
+  function refreshAlertRuleTargets() {
+    var typeSel = document.getElementById('alert-rule-type');
+    var targetSel = document.getElementById('alert-rule-target');
+    if (!typeSel || !targetSel) return;
+    var type = typeSel.value;
+    var meta = (typeof AlertRules !== 'undefined') ? AlertRules.TYPE_META[type] : null;
+    if (!meta) return;
+    var opts = ['<option value="">— target —</option>'];
+    if (meta.scope === 'symbol') {
+      var seen = {};
+      HKELIApp.data.eliDeals.forEach(function (d) {
+        (d.underlyingAssets || []).forEach(function (a) {
+          if (a.symbol && !seen[a.symbol]) {
+            seen[a.symbol] = true;
+            opts.push('<option value="' + escapeHtml(a.symbol) + '">' + escapeHtml(a.symbol) + '</option>');
+          }
+        });
+      });
+    } else {
+      opts.push('<option value="portfolio">Whole portfolio</option>');
+      HKELIApp.data.eliDeals.forEach(function (d) {
+        opts.push('<option value="' + escapeHtml(d.id) + '">' + escapeHtml(d.dealName) + '</option>');
+      });
+    }
+    targetSel.innerHTML = opts.join('');
+    var valEl = document.getElementById('alert-rule-value');
+    if (valEl) valEl.placeholder = meta.unit === 'days' ? 'days' : (meta.unit === '/100' ? 'score' : 'HK$');
+  }
+
+  function renderAlertRulesList() {
+    var el = document.getElementById('alert-rules-list');
+    if (!el || typeof AlertRules === 'undefined') return;
+    var rules = getAlertRules();
+    if (!rules.length) {
+      el.innerHTML = '<p class="form-help">No custom rules yet.</p>';
+      return;
+    }
+    var esc = AlertRules.escapeHtml;
+    el.innerHTML = rules.map(function (r) {
+      var meta = AlertRules.TYPE_META[r.type] || { label: r.type, unit: '' };
+      var label = meta.label + ' ' + (meta.unit === 'HK$' ? 'HK$' + r.value : r.value + (meta.unit === '/100' ? '/100' : (meta.unit === 'days' ? ' days' : '')));
+      return '<div class="alert-rule-row' + (r.enabled === false ? ' disabled' : '') + '">'
+        + '<label class="alert-rule-toggle">'
+        + '<input type="checkbox" data-rule-toggle="' + esc(r.id) + '"' + (r.enabled === false ? '' : ' checked') + '>'
+        + '</label>'
+        + '<span class="alert-rule-text">' + esc(r.target) + ' · ' + esc(label) + '</span>'
+        + '<button type="button" class="alert-rule-remove" data-rule-remove="' + esc(r.id) + '" aria-label="Remove rule">'
+        + '<i class="fas fa-trash"></i></button>'
+        + '</div>';
+    }).join('');
+
+    el.querySelectorAll('[data-rule-remove]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        saveAlertRules(AlertRules.removeRule(getAlertRules(), b.dataset.ruleRemove));
+        renderAlertRulesList();
+        rebuildAlertsFromState();
+      rebuildCustomAlerts();
+        refreshDealViews();
+        showToast('Rule removed', 'info');
+      });
+    });
+    el.querySelectorAll('[data-rule-toggle]').forEach(function (c) {
+      c.addEventListener('change', function () {
+        saveAlertRules(AlertRules.toggleRule(getAlertRules(), c.dataset.ruleToggle));
+        renderAlertRulesList();
+        rebuildAlertsFromState();
+      rebuildCustomAlerts();
+        refreshDealViews();
+      });
+    });
+  }
+
+  function setupAlertRuleUI() {
+    if (document.getElementById('alert-rule-add') && document.getElementById('alert-rule-add').dataset.bound) return;
+    var typeSel = document.getElementById('alert-rule-type');
+    var addBtn = document.getElementById('alert-rule-add');
+    if (!typeSel || !addBtn) return;
+    addBtn.dataset.bound = '1';
+
+    typeSel.addEventListener('change', refreshAlertRuleTargets);
+
+    addBtn.addEventListener('click', function () {
+      var type = typeSel.value;
+      var target = (document.getElementById('alert-rule-target') || {}).value;
+      var value = (document.getElementById('alert-rule-value') || {}).value;
+      var res = AlertRules.addRule(getAlertRules(), { type: type, target: target, value: value });
+      if (!res.added) { showToast('Pick a target and a numeric value', 'warning'); return; }
+      saveAlertRules(res.rules);
+      document.getElementById('alert-rule-value').value = '';
+      renderAlertRulesList();
+      rebuildAlertsFromState();
+      rebuildCustomAlerts();
+      refreshDealViews();
+      showToast('Rule added — it will be checked on every refresh', 'success');
+    });
   }
   function renderAlerts() {
     var list = document.getElementById('alerts-list');

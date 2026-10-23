@@ -404,6 +404,18 @@
                             <div class="analytics-card">
                                 <div class="card">
                                     <div class="card__body">
+                                        <h3>P&amp;L Attribution by Underlying</h3>
+                                        <p class="form-help">Which stock actually made or cost you money, across the whole portfolio. ELI pays on the worst leg — but attribution shows where the move came from.</p>
+                                        <div id="pnl-attribution-list"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-row">
+                            <div class="analytics-card">
+                                <div class="card">
+                                    <div class="card__body">
                                         <h3>Portfolio Value Over Time</h3>
                                         <p class="form-help">Rebuilt from the daily price snapshots recorded on every refresh. Fills in as you keep the app open.</p>
                                         <div class="form-group" style="max-width: 220px;">
@@ -694,6 +706,31 @@
                     <div class="view-header">
                         <h1>Alerts & Notifications</h1>
                         <p>Monitor important events and HK stock price alerts</p>
+                    </div>
+
+                    <div class="alert-rules-card card">
+                        <div class="card__body">
+                            <h3>Custom Alert Rules</h3>
+                            <p class="form-help">The built-in alerts cover barrier breach, barrier proximity, and maturity. Add your own rules for anything else you want to watch.</p>
+                            <div class="form-row" style="gap: 8px;">
+                                <select class="form-control" id="alert-rule-type" aria-label="Rule condition">
+                                    <option value="price_above">Price above…</option>
+                                    <option value="price_below">Price below…</option>
+                                    <option value="health_below">Health score below…</option>
+                                    <option value="pnl_above">Deal P&amp;L above…</option>
+                                    <option value="pnl_below">Deal P&amp;L below…</option>
+                                    <option value="maturity_within">Matures within…</option>
+                                </select>
+                                <select class="form-control" id="alert-rule-target" aria-label="Rule target">
+                                    <option value="">— target —</option>
+                                </select>
+                                <input type="number" step="any" class="form-control" id="alert-rule-value" placeholder="value" aria-label="Rule threshold">
+                                <button class="btn btn--primary" id="alert-rule-add" type="button" style="white-space: nowrap;">
+                                    <i class="fas fa-plus"></i> Add rule
+                                </button>
+                            </div>
+                            <div id="alert-rules-list"></div>
+                        </div>
                     </div>
 
                     <div class="alerts-content">
@@ -1036,6 +1073,11 @@
                                        placeholder="e.g. tech-heavy, income, speculative">
                                 <small class="form-help">Used to organize and filter deals.</small>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label" for="deal-notes-form">Notes</label>
+                                <textarea class="form-control" name="notes" id="deal-notes-form" rows="3"
+                                          placeholder="Why did you take this deal? What would make you exit?"></textarea>
+                                <small class="form-help">Private to this browser. Not sent anywhere.</small>
                         </div>
                     </div>
 
@@ -1104,21 +1146,22 @@
     </div>
 
     <!-- Browser-side modules — load in dependency order.
-         ?v=12 is a cache-bust so updates aren't held by the browser's
+         ?v=13 is a cache-bust so updates aren't held by the browser's
          10-minute Pages cache after a deploy. -->
-    <script src="js/db.js?v=12"></script>
-    <script src="js/storage.js?v=12"></script>
-    <script src="js/yahoo-finance.js?v=12"></script>
-    <script src="js/finnhub.js?v=12"></script>
-    <script src="js/sectors.js?v=12"></script>
-    <script src="js/payoff.js?v=12"></script>
-    <script src="js/fx.js?v=12"></script>
-    <script src="js/health.js?v=12"></script>
-    <script src="js/calendar.js?v=12"></script>
-    <script src="js/watchlist.js?v=12"></script>
-    <script src="js/types.js?v=12"></script>
+    <script src="js/db.js?v=13"></script>
+    <script src="js/storage.js?v=13"></script>
+    <script src="js/yahoo-finance.js?v=13"></script>
+    <script src="js/finnhub.js?v=13"></script>
+    <script src="js/sectors.js?v=13"></script>
+    <script src="js/payoff.js?v=13"></script>
+    <script src="js/fx.js?v=13"></script>
+    <script src="js/health.js?v=13"></script>
+    <script src="js/calendar.js?v=13"></script>
+    <script src="js/alerts.js?v=13"></script>
+    <script src="js/watchlist.js?v=13"></script>
+    <script src="js/types.js?v=13"></script>
     <!-- Main app — must load last -->
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
     <!-- Service worker for PWA install + offline shell -->
     <script>
       if ('serviceWorker' in navigator) {
