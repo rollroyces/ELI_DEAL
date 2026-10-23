@@ -29,13 +29,18 @@
   <pre id="out">Running…</pre>
 
   <!-- Modules in dependency order. ?v=N cache-busts after deploys. -->
-  <script src="js/db.js?v=5"></script>
-  <script src="js/storage.js?v=5"></script>
-  <script src="js/yahoo-finance.js?v=5"></script>
-  <script src="js/finnhub.js?v=5"></script>
-  <script src="js/sectors.js?v=5"></script>
-  <script src="js/payoff.js?v=5"></script>
-  <script src="js/types.js?v=5"></script>
+  <script src="js/db.js?v=15"></script>
+  <script src="js/storage.js?v=15"></script>
+  <script src="js/yahoo-finance.js?v=15"></script>
+  <script src="js/finnhub.js?v=15"></script>
+  <script src="js/sectors.js?v=15"></script>
+  <script src="js/payoff.js?v=15"></script>
+  <script src="js/fx.js?v=15"></script>
+  <script src="js/health.js?v=15"></script>
+  <script src="js/calendar.js?v=15"></script>
+  <script src="js/watchlist.js?v=15"></script>
+  <script src="js/alerts.js?v=15"></script>
+  <script src="js/types.js?v=15"></script>
   <script>
     var out = document.getElementById('out');
     function log(line) { out.textContent += '\n' + line; }
@@ -269,6 +274,46 @@
         // Empty / single point → 0 drawdown
         assert.equal(Payoff.maxDrawdown([]).maxDrawdownPct, 0, 'empty history → 0');
         assert.equal(Payoff.maxDrawdown([{price: 50, timestamp: 1}]).maxDrawdownPct, 0, 'single-point history → 0');
+
+        // ── XSS escaping ──────────────────────────────────────────────
+        // Deal names / issuers / symbols can arrive from a CSV or JSON
+        // import, so anything rendered into innerHTML must be escaped.
+        section('HTML escaping (imported data is untrusted)');
+        if (typeof AlertRules !== 'undefined' && AlertRules.escapeHtml) {
+          var esc = AlertRules.escapeHtml;
+          assert.equal(esc('<script>alert(1)</script>'),
+            '&lt;script&gt;alert(1)&lt;/script&gt;', 'script tag escaped');
+          assert.equal(esc('" onerror="alert(1)'),
+            '&quot; onerror=&quot;alert(1)', 'attribute-breakout escaped');
+          assert.equal(esc("<img src=x onerror=alert(1)>"),
+            '&lt;img src=x onerror=alert(1)&gt;', 'img/onerror escaped');
+          assert.equal(esc("O'Brien & Sons"),
+            'O&#39;Brien &amp; Sons', 'apostrophe + ampersand escaped');
+          assert.equal(esc('plain text'), 'plain text', 'plain text unchanged');
+          assert.equal(esc(''), '', 'empty string unchanged');
+          assert.equal(String(esc(123)), '123', 'number coerced to string');
+
+          // Attribute context: a quote must not be able to close it.
+          var payload = esc('x" onmouseover="alert(1)');
+          assert.ok(payload.indexOf('"') === -1, 'no bare double-quote survives escaping');
+
+          // The rendered card must contain no live element from a hostile name.
+          var hostile = { dealName: '<img src=x onerror=window.__pwned=1>', status: 'Active', issuer: '<b>bad</b>',
+            id: 'ELI-HK999', numberOfStocks: 1, nominalAmount: 1, purchasePrice: 1, currentValue: 1, pnl: 0,
+            couponRate: 1, maturityDate: '2030-01-01',
+            underlyingAssets: [{ symbol: '<svg onload=1>', name: '<script>x</script>', strikePrice: 1,
+                                barrierLevel: 1, weight: 1, currentPrice: 1 }] };
+          var div = document.createElement('div');
+          div.innerHTML = '<div>' + esc(hostile.dealName) + '</div>' +
+                          '<div>' + esc(hostile.issuer) + '</div>' +
+                          '<div>' + esc(hostile.underlyingAssets[0].symbol) + '</div>';
+          assert.equal(div.querySelectorAll('img, svg, script').length, 0,
+            'hostile deal name / issuer / symbol produce zero live elements');
+          assert.equal(div.textContent.indexOf('<'), -1,
+            'hostile markup is rendered as visible text, not parsed as HTML');
+        } else {
+          warn('AlertRules.escapeHtml not available — skipping escaping tests');
+        }
 
         // ── Yahoo Finance (live) ───────────────────────────────────────
         section('Yahoo Finance (live network calls — skipped if offline)');

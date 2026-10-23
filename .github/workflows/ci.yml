@@ -166,3 +166,41 @@ jobs:
           grep -qi 'js/db.js\|Storage\|SQLite' README.md && echo "  ✓ README mentions core modules"
           # License should be MIT
           head -3 LICENSE | grep -qi 'MIT' && echo "  ✓ LICENSE is MIT"
+  # ── 7. XSS gate ──────────────────────────────────────────────────────
+  # Deal names, issuers and symbols can arrive from a CSV or JSON import,
+  # so concatenating them straight into innerHTML is a stored-XSS vector.
+  # Any new occurrence has to go through escapeHtml().
+  xss-gate:
+    name: No unescaped user data in innerHTML
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan for raw field concatenation
+        run: |
+          set -e
+          echo "Scanning app.js for unescaped deal fields in HTML strings…"
+          # Match `+ deal.field +` / `+ d.field +` / `+ a.field +` where the
+          # field is user-supplied and the line does NOT call escapeHtml.
+          HITS=$(grep -nE "\+ ?(deal|d|a)\.(dealName|issuer|symbol|name|status|settlementMethod) ?\+" app.js \
+                 | grep -v 'escapeHtml' \
+                 | grep -v "ALERT-" \
+                 || true)
+          if [ -n "$HITS" ]; then
+            echo "  ✗ unescaped user data found in innerHTML:"
+            echo "$HITS"
+            echo ""
+            echo "Wrap the value in escapeHtml()."
+            exit 1
+          fi
+          echo "  ✓ no unescaped deal fields concatenated into HTML"
+
+      - name: escapeHtml must exist and cover all five metacharacters
+        run: |
+          set -e
+          grep -q 'function escapeHtml' app.js && echo "  ✓ app.js defines escapeHtml"
+          grep -q 'function escapeHtml' js/alerts.js && echo "  ✓ js/alerts.js defines escapeHtml"
+          for ch in '&' '<' '>' '"' "'"; do
+            grep -q -- "$ch" <(sed -n '/function escapeHtml/,/^  }/p' app.js) \
+              && echo "  ✓ escapeHtml handles $ch" \
+              || { echo "  ✗ escapeHtml missing $ch"; exit 1; }
+          done
